@@ -5,8 +5,8 @@ const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 3000;
 const ARENA_HALF = 4500;
-const TICK_RATE = 30; // 30 FPS server simulation
-const FOOD_COUNT = 1200;
+const TICK_RATE = 25;
+const FOOD_COUNT = 1000;
 
 const FRUITS = [
   { emoji: '🍒', val: 2, r: 9 },
@@ -70,8 +70,11 @@ const players = new Map();
 const socketsById = new Map();
 let foods = [];
 let respawnQueue = [];
+let tickEatenIds = [];
+let tickSpawnedFoods = [];
 let nextFoodId = 1;
 let nextPlayerId = 1;
+let tickCounter = 0;
 
 function randomArenaPos(margin = 200) {
   const limit = ARENA_HALF - margin;
@@ -81,18 +84,25 @@ function randomArenaPos(margin = 200) {
   };
 }
 
-function createFood(x, y) {
+function createFood(x, y, forcedIdx = null) {
   const pos = (x !== undefined && y !== undefined) ? { x, y } : randomArenaPos(160);
-  const fIdx = Math.floor(Math.pow(Math.random(), 1.25) * FRUITS.length);
-  const spec = FRUITS[Math.min(FRUITS.length - 1, fIdx)];
+  const fIdx = forcedIdx !== null
+    ? forcedIdx
+    : Math.min(FRUITS.length - 1, Math.floor(Math.pow(Math.random(), 1.25) * FRUITS.length));
+  const spec = FRUITS[fIdx];
   return {
     id: nextFoodId++,
-    x: pos.x,
-    y: pos.y,
+    x: Math.round(pos.x),
+    y: Math.round(pos.y),
+    t: fIdx,
     emoji: spec.emoji,
     val: spec.val,
     r: spec.r
   };
+}
+
+function packFood(f) {
+  return [f.id, f.x, f.y, f.t];
 }
 
 function initFoods() {
@@ -134,6 +144,24 @@ function createPlayer(id, name, colors) {
   };
 }
 
+function spawnOrRespawnSocketPlayer(ws, id, msg, existingPlayer) {
+  const fresh = createPlayer(
+    id,
+    msg.name || (existingPlayer && existingPlayer.name),
+    msg.colors || (existingPlayer && existingPlayer.colors)
+  );
+  fresh.targetAngle = fresh.angle;
+  players.set(id, fresh);
+  socketsById.set(id, ws);
+  ws.send(JSON.stringify({
+    type: 'joined',
+    id,
+    arenaHalf: ARENA_HALF,
+    foods: foods.map(packFood)
+  }));
+  return fresh;
+}
+
 wss.on('connection', (ws) => {
   const id = nextPlayerId++;
   let player = null;
@@ -151,27 +179,13 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    if (msg.type === 'join') {
-      player = createPlayer(id, msg.name, msg.colors);
-      player.targetAngle = player.angle;
-      players.set(id, player);
-      socketsById.set(id, ws);
-      ws.send(JSON.stringify({
-        type: 'joined',
-        id,
-        arenaHalf: ARENA_HALF
-      }));
+    if (msg.type === 'join' || msg.type === 'respawn') {
+      player = spawnOrRespawnSocketPlayer(ws, id, msg, player);
     } else if (msg.type === 'input' && player && player.alive) {
       if (typeof msg.angle === 'number' && Number.isFinite(msg.angle)) {
         player.targetAngle = msg.angle;
       }
       player.boosting = Boolean(msg.boosting);
-    } else if (msg.type === 'respawn' && player) {
-      const fresh = createPlayer(id, msg.name || player.name, msg.colors || player.colors);
-      fresh.targetAngle = fresh.angle;
-      players.set(id, fresh);
-      socketsById.set(id, ws);
-      player = fresh;
     }
   });
 
@@ -186,7 +200,6 @@ wss.on('connection', (ws) => {
   });
 });
 
-// Keep mobile connections alive & clean up dead sockets
 const heartbeatInterval = setInterval(() => {
   wss.clients.forEach((ws) => {
     if (ws.isAlive === false) {
@@ -205,18 +218,17 @@ function killPlayer(victim, killer) {
   if (!victim || !victim.alive) return;
   victim.alive = false;
 
-  // Drop fruits along victim's body
+  const watermelonIdx = FRUITS.length - 1;
   for (let i = 0; i < victim.segments.length; i += 2) {
     const seg = victim.segments[i];
     if (foods.length < 1800) {
-      foods.push({
-        id: nextFoodId++,
-        x: seg.x + (Math.random() - 0.5) * 18,
-        y: seg.y + (Math.random() - 0.5) * 18,
-        emoji: '🍉',
-        val: 15,
-        r: 14
-      });
+      const drop = createFood(
+        seg.x + (Math.random() - 0.5) * 18,
+        seg.y + (Math.random() - 0.5) * 18,
+        watermelonIdx
+      );
+      foods.push(drop);
+      tickSpawnedFoods.push(packFood(drop));
     }
   }
 
@@ -230,11 +242,12 @@ function killPlayer(victim, killer) {
 }
 
 function stepSimulation(dt) {
-  // Process fruit respawn queue (1.2 - 2.4s delay)
   for (let i = respawnQueue.length - 1; i >= 0; i--) {
     respawnQueue[i].timer -= dt;
     if (respawnQueue[i].timer <= 0) {
-      foods.push(createFood());
+      const nf = createFood();
+      foods.push(nf);
+      tickSpawnedFoods.push(packFood(nf));
       respawnQueue.splice(i, 1);
     }
   }
@@ -249,7 +262,7 @@ function stepSimulation(dt) {
     let diff = p.targetAngle - p.angle;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
-    p.angle += diff * Math.min(1, dt * 8.5);
+    p.angle += diff * Math.min(1, dt * 10);
 
     const canBoost = p.boosting && p.score > 15;
     const speed = canBoost ? 340 : 195;
@@ -289,7 +302,6 @@ function stepSimulation(dt) {
       curr.y = prev.y - Math.sin(a) * spacing;
     }
 
-    // Eat fruits
     const eatR = r + 14;
     for (let i = foods.length - 1; i >= 0; i--) {
       const f = foods[i];
@@ -297,6 +309,7 @@ function stepSimulation(dt) {
       const dy = p.y - f.y;
       if (dx * dx + dy * dy < eatR * eatR) {
         p.score += f.val;
+        tickEatenIds.push(f.id);
         foods.splice(i, 1);
         if (foods.length + respawnQueue.length < FOOD_COUNT) {
           respawnQueue.push({ timer: 1.2 + Math.random() * 1.2 });
@@ -305,7 +318,6 @@ function stepSimulation(dt) {
     }
   }
 
-  // Player-to-player collision check
   const stillAlive = Array.from(players.values()).filter((p) => p.alive);
   for (const p1 of stillAlive) {
     if (!p1.alive || p1.shield > 0) continue;
@@ -334,6 +346,7 @@ function stepSimulation(dt) {
 }
 
 function broadcastState() {
+  tickCounter++;
   const snapshotPlayers = Array.from(players.values())
     .filter((p) => p.alive)
     .map((p) => ({
@@ -348,19 +361,25 @@ function broadcastState() {
       segments: p.segments.map((s) => ({ x: Math.round(s.x), y: Math.round(s.y) }))
     }));
 
-  const payload = JSON.stringify({
+  const stateMsg = {
     type: 'state',
-    players: snapshotPlayers,
-    foods: foods.map((f) => ({
-      id: f.id,
-      x: Math.round(f.x),
-      y: Math.round(f.y),
-      emoji: f.emoji,
-      val: f.val,
-      r: f.r
-    }))
-  });
+    players: snapshotPlayers
+  };
 
+  if (tickEatenIds.length > 0) {
+    stateMsg.eaten = tickEatenIds;
+  }
+  if (tickSpawnedFoods.length > 0) {
+    stateMsg.spawned = tickSpawnedFoods;
+  }
+  if (tickCounter % 100 === 0) {
+    stateMsg.foodsFull = foods.map(packFood);
+  }
+
+  tickEatenIds = [];
+  tickSpawnedFoods = [];
+
+  const payload = JSON.stringify(stateMsg);
   for (const ws of socketsById.values()) {
     if (ws.readyState === 1) {
       ws.send(payload);
