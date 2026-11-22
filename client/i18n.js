@@ -4,7 +4,7 @@ const I18N = {
   hy: {
     code: 'ՀԱՅ',
     name: 'Հայերեն',
-    sub: 'ՈՐԴԵՐԻ ԳՈՏԻ',
+    sub: 'WORMS',
     play: 'ՄԱՐՏԻ՛',
     workshop: 'Արհեստանոց',
     hint: 'Սեղմիր ցանկացած տեղ կամ բռնիր որդիկին',
@@ -44,7 +44,7 @@ const I18N = {
   ru: {
     code: 'РУС',
     name: 'Русский',
-    sub: 'ЗОНА ЧЕРВЕЙ',
+    sub: 'WORMS',
     play: 'В БОЙ!',
     workshop: 'Мастерская',
     hint: 'Нажми в любое место или потяни червячка',
@@ -84,7 +84,7 @@ const I18N = {
   en: {
     code: 'ENG',
     name: 'English',
-    sub: 'WORMS ZONE',
+    sub: 'WORMS',
     play: 'PLAY!',
     workshop: 'Workshop',
     hint: 'Click anywhere or drag your worm around',

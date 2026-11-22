@@ -5,7 +5,7 @@ const gCtx = gameCanvas.getContext('2d');
 // Larger Square Arena Half-Size (9000 x 9000 total)
 const ARENA_HALF = 4500;
 
-// 25 Varieties of Fruits & Vegetables (2 to 30 points)
+// 26 Varieties of Fruits & Vegetables (2 to 30 points)
 const FRUITS = [
   { emoji: '🍒', val: 2, r: 9 },
   { emoji: '🫐', val: 3, r: 9 },
@@ -98,17 +98,30 @@ let lastFrameTime = 0;
 let currentZoom = 1.24;
 
 // ================= MULTIPLAYER WEBSOCKET STATE =================
+const PROD_WS_URL = 'wss://vortex-worms.onrender.com';
 let wsSocket = null;
 let mpConnected = false;
 let mpPlayerId = null;
 let lastInputSentAt = 0;
 
 function getWsUrl() {
-  if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${proto}//${window.location.host}`;
+  const { protocol, hostname, host, port } = window.location;
+  // Inside Android/iOS Capacitor APK, local files run on https://localhost or capacitor://localhost
+  const isCapacitorApp =
+    protocol === 'capacitor:' ||
+    protocol === 'file:' ||
+    (hostname === 'localhost' && !port);
+
+  if (isCapacitorApp) {
+    return PROD_WS_URL;
   }
-  return 'ws://localhost:3000';
+
+  if (protocol === 'http:' || protocol === 'https:') {
+    const proto = protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${host}`;
+  }
+
+  return PROD_WS_URL;
 }
 
 function sendMultiplayerInput(force = false) {
