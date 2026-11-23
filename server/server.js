@@ -7,6 +7,22 @@ const PORT = process.env.PORT || 3000;
 const ARENA_HALF = 4500;
 const TICK_RATE = 25;
 const FOOD_COUNT = 4000;
+const BOT_COUNT = 10;
+
+const BOT_NAMES = [
+  'Արամ', 'Անի', 'Դավիթ', 'Max', 'Nika',
+  'Leo', 'Տիգրան', 'Alex', 'Մհեր', 'Kira',
+  'Նարե', 'Saro'
+];
+
+const BOT_SKINS = [
+  ['#ffffff', '#e2e8f0', '#38bdf8'],
+  ['#10b981', '#059669', '#a7f3d0'],
+  ['#f97316', '#ef4444', '#facc15'],
+  ['#a855f7', '#ec4899', '#38bdf8'],
+  ['#fbbf24', '#d97706', '#fef08a'],
+  ['#ef4444', '#22c55e', '#15803d']
+];
 
 const FRUITS = [
   { emoji: '🍒', val: 2, r: 9 },
@@ -123,7 +139,8 @@ function calcSegmentsCount(score) {
 
 function updatePlayerSegmentsFromPath(p) {
   const targetSegs = calcSegmentsCount(p.score);
-  const spacing = 5.2;
+  const r = calcRadius(p.score);
+  const spacing = Math.max(5.2, r * 0.44);
   if (!p.path || p.path.length === 0) {
     p.path = [{ x: p.x, y: p.y }];
   }
@@ -194,6 +211,7 @@ function createPlayer(id, name, colors, spawnHint = null) {
     targetAngle: angle,
     boosting: false,
     isBoostingNow: false,
+    isBot: false,
     score: 0,
     kills: 0,
     shield: 4.0,
@@ -201,6 +219,114 @@ function createPlayer(id, name, colors, spawnHint = null) {
     segments,
     alive: true
   };
+}
+
+function createBot() {
+  const id = nextPlayerId++;
+  const name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
+  const colors = BOT_SKINS[Math.floor(Math.random() * BOT_SKINS.length)];
+  const bot = createPlayer(id, name, colors);
+  bot.isBot = true;
+  bot.shield = 2.0;
+  bot.score = 15 + Math.floor(Math.random() * 140);
+  bot.aiTimer = 0.4 + Math.random() * 1.0;
+  bot.aiTargetAngle = bot.angle;
+
+  const targetSegs = calcSegmentsCount(bot.score);
+  const spacing = Math.max(5.2, calcRadius(bot.score) * 0.44);
+  bot.path = [];
+  bot.segments = [];
+  for (let i = 0; i < targetSegs; i++) {
+    const pt = {
+      x: bot.x - Math.cos(bot.angle) * i * spacing,
+      y: bot.y - Math.sin(bot.angle) * i * spacing
+    };
+    bot.path.push(pt);
+    bot.segments.push({ ...pt });
+  }
+  return bot;
+}
+
+function maintainBots() {
+  let aliveBots = 0;
+  for (const [id, p] of players.entries()) {
+    if (p.isBot) {
+      if (p.alive) {
+        aliveBots++;
+      } else {
+        players.delete(id);
+      }
+    }
+  }
+  while (aliveBots < BOT_COUNT) {
+    const bot = createBot();
+    players.set(bot.id, bot);
+    aliveBots++;
+  }
+}
+
+function updateBotAI(bot, dt, allAlive) {
+  bot.aiTimer -= dt;
+
+  const wallMargin = 420;
+  if (bot.x > ARENA_HALF - wallMargin || bot.x < -ARENA_HALF + wallMargin ||
+      bot.y > ARENA_HALF - wallMargin || bot.y < -ARENA_HALF + wallMargin) {
+    bot.aiTargetAngle = Math.atan2(-bot.y, -bot.x);
+    bot.boosting = false;
+    bot.targetAngle = bot.aiTargetAngle;
+    return;
+  }
+
+  const lookX = bot.x + Math.cos(bot.angle) * 95;
+  const lookY = bot.y + Math.sin(bot.angle) * 95;
+  let dangerWorm = null;
+  for (const other of allAlive) {
+    if (other.id === bot.id || !other.alive) continue;
+    for (let s = 0; s < other.segments.length; s += 2) {
+      const seg = other.segments[s];
+      const dx = lookX - seg.x;
+      const dy = lookY - seg.y;
+      if (dx * dx + dy * dy < 110 * 110) {
+        dangerWorm = seg;
+        break;
+      }
+    }
+    if (dangerWorm) break;
+  }
+
+  if (dangerWorm) {
+    bot.aiTargetAngle = Math.atan2(bot.y - dangerWorm.y, bot.x - dangerWorm.x);
+    bot.boosting = false;
+    bot.targetAngle = bot.aiTargetAngle;
+    return;
+  }
+
+  if (bot.aiTimer <= 0) {
+    bot.aiTimer = 0.55 + Math.random() * 1.15;
+
+    let bestFood = null;
+    let bestDistSq = 280 * 280;
+    for (let i = 0; i < foods.length; i += 3) {
+      const f = foods[i];
+      const dx = f.x - bot.x;
+      const dy = f.y - bot.y;
+      const dSq = dx * dx + dy * dy;
+      if (dSq < bestDistSq) {
+        bestDistSq = dSq;
+        bestFood = f;
+      }
+    }
+
+    if (bestFood) {
+      bot.aiTargetAngle = Math.atan2(bestFood.y - bot.y, bestFood.x - bot.x);
+    } else {
+      bot.aiTargetAngle = bot.angle + (Math.random() - 0.5) * 1.5;
+    }
+
+    bot.boosting = bot.score > 30 && Math.random() < 0.14;
+  }
+
+  bot.targetAngle = bot.aiTargetAngle;
 }
 
 function spawnOrRespawnSocketPlayer(ws, id, msg, existingPlayer) {
@@ -301,6 +427,8 @@ function killPlayer(victim, killer) {
 }
 
 function stepSimulation(dt) {
+  maintainBots();
+
   for (let i = respawnQueue.length - 1; i >= 0; i--) {
     respawnQueue[i].timer -= dt;
     if (respawnQueue[i].timer <= 0) {
@@ -318,6 +446,10 @@ function stepSimulation(dt) {
       p.shield = Math.max(0, p.shield - dt);
     }
 
+    if (p.isBot) {
+      updateBotAI(p, dt, activePlayers);
+    }
+
     const r = calcRadius(p.score);
     const canBoost = p.boosting && p.score > 1;
     p.isBoostingNow = canBoost;
@@ -327,9 +459,9 @@ function stepSimulation(dt) {
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
 
-    const sizeFactor = Math.max(0.75, 10.5 / r);
-    const maxTurnRate = 9.0 * sizeFactor;
-    const step = diff * Math.min(1, dt * 22);
+    const sizeFactor = Math.max(0.82, 10.5 / r);
+    const maxTurnRate = 12.5 * sizeFactor;
+    const step = diff * Math.min(1, dt * 28);
     p.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
 
     if (canBoost) {
@@ -444,6 +576,7 @@ function broadcastState() {
 }
 
 initFoods();
+maintainBots();
 
 let lastTime = Date.now();
 setInterval(() => {

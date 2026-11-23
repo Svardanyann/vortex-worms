@@ -80,10 +80,12 @@ function resizeLobby() {
 window.addEventListener('resize', resizeLobby);
 resizeLobby();
 
+// Matches in-game starting worm exact proportions and uniform thickness
 const lobbyWorm = {
   segments: [],
-  segCount: 22,
-  segDist: 10,
+  segCount: 14,
+  segDist: 6.4,
+  radius: 13,
   angle: 0,
   speed: 1.5,
   targetPoint: null,
@@ -251,31 +253,46 @@ function updateAndDrawLobbyWorm() {
   }
 
   const skin = SKINS.find(s => s.id === state.selectedSkin) || SKINS[0];
-  for (let i = lobbyWorm.segments.length - 1; i >= 0; i--) {
+  const r = lobbyWorm.radius;
+
+  for (let i = lobbyWorm.segments.length - 1; i >= 1; i--) {
     const s = lobbyWorm.segments[i];
-    const radius = 17 - (i / lobbyWorm.segments.length) * 6;
     lCtx.fillStyle = skin.colors[i % skin.colors.length];
     lCtx.beginPath();
-    lCtx.arc(s.x, s.y, radius, 0, Math.PI * 2);
+    lCtx.arc(s.x, s.y, r, 0, Math.PI * 2);
     lCtx.fill();
-    lCtx.strokeStyle = 'rgba(0,0,0,0.18)';
-    lCtx.lineWidth = 1.5;
-    lCtx.stroke();
   }
 
-  const eyeOffset = 7;
-  const eyeAngle1 = lobbyWorm.angle - 0.55;
-  const eyeAngle2 = lobbyWorm.angle + 0.55;
-  [eyeAngle1, eyeAngle2].forEach(ea => {
-    const ex = head.x + Math.cos(ea) * eyeOffset;
-    const ey = head.y + Math.sin(ea) * eyeOffset;
+  lCtx.fillStyle = skin.colors[0];
+  lCtx.beginPath();
+  lCtx.arc(head.x, head.y, r, 0, Math.PI * 2);
+  lCtx.fill();
+
+  // Same cute smile as in-game worm
+  const mx = head.x + Math.cos(lobbyWorm.angle) * (r * 0.66);
+  const my = head.y + Math.sin(lobbyWorm.angle) * (r * 0.66);
+  lCtx.save();
+  lCtx.translate(mx, my);
+  lCtx.rotate(lobbyWorm.angle);
+  lCtx.strokeStyle = 'rgba(35, 10, 15, 0.65)';
+  lCtx.lineWidth = Math.max(1.5, r * 0.09);
+  lCtx.lineCap = 'round';
+  lCtx.beginPath();
+  lCtx.arc(-r * 0.08, 0, r * 0.24, -0.45, 0.45);
+  lCtx.stroke();
+  lCtx.restore();
+
+  const eyeDist = r * 0.42;
+  [-0.58, 0.58].forEach(offset => {
+    const ex = head.x + Math.cos(lobbyWorm.angle + offset) * eyeDist;
+    const ey = head.y + Math.sin(lobbyWorm.angle + offset) * eyeDist;
     lCtx.fillStyle = '#fff';
     lCtx.beginPath();
-    lCtx.arc(ex, ey, 5, 0, Math.PI * 2);
+    lCtx.arc(ex, ey, r * 0.28, 0, Math.PI * 2);
     lCtx.fill();
     lCtx.fillStyle = '#111';
     lCtx.beginPath();
-    lCtx.arc(ex + Math.cos(lobbyWorm.angle) * 2, ey + Math.sin(lobbyWorm.angle) * 2, 2.5, 0, Math.PI * 2);
+    lCtx.arc(ex + Math.cos(lobbyWorm.angle) * (r * 0.11), ey + Math.sin(lobbyWorm.angle) * (r * 0.11), r * 0.14, 0, Math.PI * 2);
     lCtx.fill();
   });
 }

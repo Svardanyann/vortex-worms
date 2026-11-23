@@ -24,7 +24,8 @@ window.addEventListener('resize', () => {
 // Place body segments along the exact ground path of the head (zero sideways drift)
 function updateSegmentsFromPath(worm) {
   const targetLen = calcTargetSegments(worm.score);
-  const segSpacing = 5.2;
+  const r = calcWormRadius(worm.score);
+  const segSpacing = Math.max(5.2, r * 0.44);
   if (!worm.path || worm.path.length === 0) {
     worm.path = [{ x: worm.x, y: worm.y }];
   }
@@ -95,9 +96,9 @@ function updateWorm(worm, dt) {
     while (turnDiff > Math.PI) turnDiff -= Math.PI * 2;
     while (turnDiff < -Math.PI) turnDiff += Math.PI * 2;
 
-    const sizeFactor = Math.max(0.75, 10.5 / rHead);
-    const maxTurnRate = 9.0 * sizeFactor;
-    const step = turnDiff * Math.min(1, dt * 22);
+    const sizeFactor = Math.max(0.82, 10.5 / rHead);
+    const maxTurnRate = 12.5 * sizeFactor;
+    const step = turnDiff * Math.min(1, dt * 28);
     worm.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
     sendMultiplayerInput();
   } else {
@@ -114,8 +115,8 @@ function updateWorm(worm, dt) {
     turnDiff = worm.aiTargetAngle - worm.angle;
     while (turnDiff > Math.PI) turnDiff -= Math.PI * 2;
     while (turnDiff < -Math.PI) turnDiff += Math.PI * 2;
-    const maxTurnRate = 5.5;
-    const step = turnDiff * Math.min(1, dt * 12);
+    const maxTurnRate = 7.2;
+    const step = turnDiff * Math.min(1, dt * 15);
     worm.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
   }
 
@@ -280,15 +281,15 @@ function drawWorm(worm) {
     gCtx.restore();
   }
 
-  // Distinct golden energy aura when boosting
+  // Uniform outer golden glow behind body when boosting (keeps body thickness 100% even)
   if (worm.isBoostingActive) {
     const pulse = 0.85 + 0.15 * Math.sin(performance.now() * 0.02);
     gCtx.save();
-    gCtx.fillStyle = 'rgba(250, 204, 21, 0.18)';
-    for (let i = len - 1; i >= 0; i -= 2) {
+    gCtx.fillStyle = 'rgba(250, 204, 21, 0.26)';
+    for (let i = len - 1; i >= 0; i--) {
       const seg = worm.segments[i];
       gCtx.beginPath();
-      gCtx.arc(seg.x, seg.y, r + 6 * pulse, 0, Math.PI * 2);
+      gCtx.arc(seg.x, seg.y, r + 4.5 * pulse, 0, Math.PI * 2);
       gCtx.fill();
     }
     gCtx.restore();
@@ -309,22 +310,12 @@ function drawWorm(worm) {
     gCtx.beginPath();
     gCtx.arc(seg.x, seg.y, r, 0, Math.PI * 2);
     gCtx.fill();
-    if (worm.isBoostingActive) {
-      gCtx.strokeStyle = 'rgba(254, 240, 138, 0.65)';
-      gCtx.lineWidth = 2;
-      gCtx.stroke();
-    }
   }
 
   gCtx.fillStyle = worm.colors[0];
   gCtx.beginPath();
   gCtx.arc(worm.x, worm.y, r, 0, Math.PI * 2);
   gCtx.fill();
-  if (worm.isBoostingActive) {
-    gCtx.strokeStyle = '#fef08a';
-    gCtx.lineWidth = 2.5;
-    gCtx.stroke();
-  }
 
   const mx = worm.x + Math.cos(worm.angle) * (r * 0.66);
   const my = worm.y + Math.sin(worm.angle) * (r * 0.66);
