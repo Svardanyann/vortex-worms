@@ -85,7 +85,8 @@ function updateWorm(worm, dt) {
 
   const rHead = calcWormRadius(worm.score);
   const wantsBoost = worm.isPlayer ? isBoosting : false;
-  const canBoost = wantsBoost && (worm.score > 5 || worm.effects.freeBoost > 0);
+  const canBoost = wantsBoost && (worm.score > 1 || worm.effects.freeBoost > 0);
+  worm.isBoostingActive = canBoost;
   const speed = canBoost ? 280 : 160;
 
   let turnDiff = 0;
@@ -119,7 +120,23 @@ function updateWorm(worm, dt) {
   }
 
   if (!mpConnected && canBoost && worm.effects.freeBoost <= 0) {
-    worm.score = Math.max(0, worm.score - dt * 5);
+    const drain = dt * 1;
+    worm.score = Math.max(0, worm.score - drain);
+    if (worm.isPlayer) {
+      worm.boostDrainAcc = (worm.boostDrainAcc || 0) + drain;
+      if (worm.boostDrainAcc >= 1) {
+        worm.boostDrainAcc -= 1;
+        floatingTexts.push({
+          x: worm.x,
+          y: worm.y - 16,
+          text: '-1',
+          alpha: 1.0,
+          color: '#ff6b6b'
+        });
+      }
+    }
+  } else if (!canBoost) {
+    worm.boostDrainAcc = 0;
   }
 
   worm.x += Math.cos(worm.angle) * speed * dt;
@@ -263,6 +280,20 @@ function drawWorm(worm) {
     gCtx.restore();
   }
 
+  // Distinct golden energy aura when boosting
+  if (worm.isBoostingActive) {
+    const pulse = 0.85 + 0.15 * Math.sin(performance.now() * 0.02);
+    gCtx.save();
+    gCtx.fillStyle = 'rgba(250, 204, 21, 0.18)';
+    for (let i = len - 1; i >= 0; i -= 2) {
+      const seg = worm.segments[i];
+      gCtx.beginPath();
+      gCtx.arc(seg.x, seg.y, r + 6 * pulse, 0, Math.PI * 2);
+      gCtx.fill();
+    }
+    gCtx.restore();
+  }
+
   if (worm.shieldTime > 0) {
     const blink = worm.shieldTime < 1.5 && Math.floor(worm.shieldTime * 10) % 2 === 0;
     gCtx.strokeStyle = blink ? '#facc15' : 'rgba(76, 201, 240, 0.75)';
@@ -278,12 +309,22 @@ function drawWorm(worm) {
     gCtx.beginPath();
     gCtx.arc(seg.x, seg.y, r, 0, Math.PI * 2);
     gCtx.fill();
+    if (worm.isBoostingActive) {
+      gCtx.strokeStyle = 'rgba(254, 240, 138, 0.65)';
+      gCtx.lineWidth = 2;
+      gCtx.stroke();
+    }
   }
 
   gCtx.fillStyle = worm.colors[0];
   gCtx.beginPath();
   gCtx.arc(worm.x, worm.y, r, 0, Math.PI * 2);
   gCtx.fill();
+  if (worm.isBoostingActive) {
+    gCtx.strokeStyle = '#fef08a';
+    gCtx.lineWidth = 2.5;
+    gCtx.stroke();
+  }
 
   const mx = worm.x + Math.cos(worm.angle) * (r * 0.66);
   const my = worm.y + Math.sin(worm.angle) * (r * 0.66);

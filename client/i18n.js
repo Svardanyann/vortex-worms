@@ -228,7 +228,7 @@ function createNewProfile(customName = '') {
   if (typeof updateUI === 'function') updateUI();
 }
 
-// ================= SOUND & CONTINUOUS AMBIENT MUSIC SYNTH =================
+// ================= SOUND & LIFECYCLE-AWARE AMBIENT MUSIC SYNTH =================
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let masterCompressor = null;
 let masterGain = null;
@@ -252,7 +252,7 @@ function getAudioOutput() {
 }
 
 function playTone(freq, type = 'sine', dur = 0.08, vol = 0.08) {
-  if (!state.sound) return;
+  if (!state.sound || document.hidden) return;
   try {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const osc = audioCtx.createOscillator();
@@ -269,9 +269,11 @@ function playTone(freq, type = 'sine', dur = 0.08, vol = 0.08) {
   } catch(e) {}
 }
 
-// Continuous calm ambient melody in both lobby and gameplay
 let bgMusicTimer = null;
+let bgRestartTimeout = null;
 let musicStep = 0;
+let musicPausedByGameOver = false;
+
 const CALM_NOTES = [
   261.63, 329.63, 392.00, 493.88,
   440.00, 392.00, 329.63, 293.66,
@@ -279,37 +281,86 @@ const CALM_NOTES = [
   493.88, 392.00, 349.23, 329.63
 ];
 
+function playSingleMusicStep() {
+  if (!state.sound || document.hidden || musicPausedByGameOver) return;
+  try {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const freq = CALM_NOTES[musicStep % CALM_NOTES.length];
+    musicStep++;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.11, audioCtx.currentTime + 0.14);
+    gain.gain.exponentialRampToValueAtTime(0.0005, audioCtx.currentTime + 1.1);
+    osc.connect(gain);
+    gain.connect(getAudioOutput());
+    osc.start();
+    osc.stop(audioCtx.currentTime + 1.15);
+  } catch(e) {}
+}
+
 function startBgMusic() {
-  if (bgMusicTimer) return;
-  bgMusicTimer = setInterval(() => {
-    if (!state.sound) return;
-    try {
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-      const freq = CALM_NOTES[musicStep % CALM_NOTES.length];
-      musicStep++;
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-      gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.11, audioCtx.currentTime + 0.14);
-      gain.gain.exponentialRampToValueAtTime(0.0005, audioCtx.currentTime + 1.1);
-      osc.connect(gain);
-      gain.connect(getAudioOutput());
-      osc.start();
-      osc.stop(audioCtx.currentTime + 1.15);
-    } catch(e) {}
-  }, 750);
+  if (bgMusicTimer || musicPausedByGameOver || document.hidden || !state.sound) return;
+  playSingleMusicStep();
+  bgMusicTimer = setInterval(playSingleMusicStep, 750);
 }
 
 function stopBgMusic() {
+  if (bgRestartTimeout) {
+    clearTimeout(bgRestartTimeout);
+    bgRestartTimeout = null;
+  }
   if (bgMusicTimer) {
     clearInterval(bgMusicTimer);
     bgMusicTimer = null;
   }
 }
 
+function restartBgMusicForMatch() {
+  musicPausedByGameOver = false;
+  stopBgMusic();
+  musicStep = 0;
+  playTone(587.33, 'triangle', 0.14, 0.08);
+  bgRestartTimeout = setTimeout(() => {
+    bgRestartTimeout = null;
+    startBgMusic();
+  }, 380);
+}
+
+function pauseAudioForBackground() {
+  stopBgMusic();
+  if (audioCtx.state === 'running') {
+    audioCtx.suspend().catch(() => {});
+  }
+}
+
+function resumeAudioFromBackground() {
+  if (document.hidden || !state.sound) return;
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {});
+  }
+  if (!musicPausedByGameOver) {
+    startBgMusic();
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    pauseAudioForBackground();
+  } else {
+    resumeAudioFromBackground();
+  }
+});
+
+window.addEventListener('blur', pauseAudioForBackground);
+window.addEventListener('focus', resumeAudioFromBackground);
+window.addEventListener('pagehide', pauseAudioForBackground);
+window.addEventListener('pageshow', resumeAudioFromBackground);
+
 window.addEventListener('pointerdown', () => {
+  if (document.hidden || musicPausedByGameOver || !state.sound) return;
   if (audioCtx.state === 'suspended') {
     audioCtx.resume().catch(() => {});
   }

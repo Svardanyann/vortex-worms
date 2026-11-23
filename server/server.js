@@ -193,6 +193,7 @@ function createPlayer(id, name, colors, spawnHint = null) {
     angle,
     targetAngle: angle,
     boosting: false,
+    isBoostingNow: false,
     score: 0,
     kills: 0,
     shield: 4.0,
@@ -318,7 +319,8 @@ function stepSimulation(dt) {
     }
 
     const r = calcRadius(p.score);
-    const canBoost = p.boosting && p.score > 5;
+    const canBoost = p.boosting && p.score > 1;
+    p.isBoostingNow = canBoost;
     const speed = canBoost ? 280 : 160;
 
     let diff = p.targetAngle - p.angle;
@@ -331,7 +333,7 @@ function stepSimulation(dt) {
     p.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
 
     if (canBoost) {
-      p.score = Math.max(0, p.score - dt * 5);
+      p.score = Math.max(0, p.score - dt * 1);
     }
 
     p.x += Math.cos(p.angle) * speed * dt;
@@ -409,6 +411,7 @@ function broadcastState() {
       x: Math.round(p.x),
       y: Math.round(p.y),
       angle: Number(p.angle.toFixed(3)),
+      boosting: Boolean(p.isBoostingNow),
       score: Math.floor(p.score),
       shield: Number(p.shield.toFixed(1)),
       segments: p.segments.map((s) => ({ x: Math.round(s.x), y: Math.round(s.y) }))

@@ -292,7 +292,7 @@ function ensureSocketInitialized() {
               x: sp.x,
               y: sp.y,
               angle: sp.angle,
-              boosting: Boolean(isBoosting)
+              boosting: Boolean(sp.boosting)
             };
 
             if (sp.score > player.score + 1) {
@@ -306,6 +306,17 @@ function ensureSocketInitialized() {
                 alpha: 1.0,
                 color: diff >= 20 ? '#ffd166' : '#80ed99'
               });
+            } else if (sp.score < player.score && isBoosting) {
+              const dropDiff = Math.floor(player.score) - Math.floor(sp.score);
+              if (dropDiff >= 1) {
+                floatingTexts.push({
+                  x: player.x,
+                  y: player.y - 16,
+                  text: `-${dropDiff}`,
+                  alpha: 1.0,
+                  color: '#ff6b6b'
+                });
+              }
             }
             player.score = sp.score;
             player.shieldTime = sp.shield || 0;
@@ -328,6 +339,7 @@ function ensureSocketInitialized() {
               targetY: sp.y,
               angle: prev ? prev.angle : sp.angle,
               targetAngle: sp.angle,
+              isBoostingActive: Boolean(sp.boosting),
               score: sp.score,
               shieldTime: sp.shield || 0,
               mouthTimer,
@@ -489,6 +501,8 @@ function createWorm(x, y, name, skinColors, isPlayer = false, initialAngle = nul
     segments: segs,
     spawnHole: emergeFromGround ? { x, y, alpha: 1.0 } : null,
     isPlayer,
+    isBoostingActive: false,
+    boostDrainAcc: 0,
     shieldTime: isPlayer ? 4.0 : 2.0,
     mouthTimer: 0,
     aiTimer: 0,
@@ -595,7 +609,7 @@ function startGame() {
     scoreValEl.parentElement.style.display = 'none';
   }
 
-  startBgMusic();
+  restartBgMusicForMatch();
 
   lastFrameTime = performance.now();
   if (gameAnimId) cancelAnimationFrame(gameAnimId);
@@ -604,6 +618,7 @@ function startGame() {
 
 function exitToLobby() {
   inGame = false;
+  musicPausedByGameOver = false;
   resetTouchControls();
   disconnectMultiplayer();
   document.body.classList.remove('in-game');
@@ -646,7 +661,6 @@ gameCanvas.addEventListener('pointerdown', (e) => {
       });
     }
   } else if (boostPointerId === null && e.pointerId !== joyPointerId) {
-    // 2nd finger immediately triggers boost
     boostPointerId = e.pointerId;
     updateBoostState();
   }
@@ -762,6 +776,8 @@ function killWorm(worm, allWorms, killer = null) {
   }
 
   if (worm.isPlayer) {
+    musicPausedByGameOver = true;
+    stopBgMusic();
     playTone(150, 'sawtooth', 0.35, 0.12);
     inGame = false;
     if (gameAnimId) {
