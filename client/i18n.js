@@ -1,4 +1,6 @@
 // ================= LOCALIZATION =================
+const GOLD_COIN_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" style="vertical-align:-3px;display:inline-block;"><defs><radialGradient id="gCoinDyn" cx="35%" cy="30%" r="70%"><stop offset="0%" stop-color="#fef08a"/><stop offset="55%" stop-color="#facc15"/><stop offset="100%" stop-color="#b45309"/></radialGradient></defs><circle cx="12" cy="12" r="10.5" fill="url(#gCoinDyn)" stroke="#fde047" stroke-width="1.5"/><circle cx="12" cy="12" r="7" fill="none" stroke="#92400e" stroke-width="1.2" opacity="0.65"/><ellipse cx="9" cy="8" rx="2.5" ry="1.4" transform="rotate(-30 9 8)" fill="#fff" opacity="0.65"/></svg>`;
+
 const LANGS = ['hy', 'ru', 'en'];
 const I18N = {
   hy: {
@@ -38,7 +40,7 @@ const I18N = {
     recordsTitle: 'Լավագույն Ռեկորդներ',
     bestScore: 'Ամենաբարձր միավոր',
     promoTitle: 'Հատուկ Առաջարկ',
-    claimBonus: 'Ստանալ +100 🪙',
+    claimBonus: `Ստանալ +100 ${GOLD_COIN_SVG}`,
     claimed: 'Արդեն ստացել ես այսօր'
   },
   ru: {
@@ -78,7 +80,7 @@ const I18N = {
     recordsTitle: 'Лучшие Рекорды',
     bestScore: 'Рекорд очков',
     promoTitle: 'Спецпредложение',
-    claimBonus: 'Забрать +100 🪙',
+    claimBonus: `Забрать +100 ${GOLD_COIN_SVG}`,
     claimed: 'Уже получено сегодня'
   },
   en: {
@@ -118,7 +120,7 @@ const I18N = {
     recordsTitle: 'Best Records',
     bestScore: 'High Score',
     promoTitle: 'Special Offer',
-    claimBonus: 'Claim +100 🪙',
+    claimBonus: `Claim +100 ${GOLD_COIN_SVG}`,
     claimed: 'Already claimed today'
   }
 };
@@ -162,7 +164,6 @@ function loadAllProfiles() {
     }
   } catch (e) {}
 
-  // Migrate legacy single save if it exists
   const defaultId = 'prof_default';
   const base = createDefaultProfileData(defaultId);
   try {
@@ -227,26 +228,48 @@ function createNewProfile(customName = '') {
   if (typeof updateUI === 'function') updateUI();
 }
 
-// ================= SOUND & CALM AMBIENT MUSIC SYNTH =================
+// ================= SOUND & CONTINUOUS AMBIENT MUSIC SYNTH =================
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let masterCompressor = null;
+let masterGain = null;
+
+function getAudioOutput() {
+  if (!masterGain) {
+    masterCompressor = audioCtx.createDynamicsCompressor();
+    masterCompressor.threshold.setValueAtTime(-16, audioCtx.currentTime);
+    masterCompressor.knee.setValueAtTime(12, audioCtx.currentTime);
+    masterCompressor.ratio.setValueAtTime(6, audioCtx.currentTime);
+    masterCompressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
+    masterCompressor.release.setValueAtTime(0.15, audioCtx.currentTime);
+
+    masterGain = audioCtx.createGain();
+    masterGain.gain.setValueAtTime(2.8, audioCtx.currentTime);
+
+    masterCompressor.connect(masterGain);
+    masterGain.connect(audioCtx.destination);
+  }
+  return masterCompressor;
+}
+
 function playTone(freq, type = 'sine', dur = 0.08, vol = 0.08) {
   if (!state.sound) return;
   try {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
+    const boostedVol = Math.min(0.45, vol * 3.2);
     osc.type = type;
     osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.setValueAtTime(boostedVol, audioCtx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
     osc.connect(gain);
-    gain.connect(audioCtx.destination);
+    gain.connect(getAudioOutput());
     osc.start();
     osc.stop(audioCtx.currentTime + dur);
   } catch(e) {}
 }
 
-// Gentle, relaxing ambient melody loop during gameplay
+// Continuous calm ambient melody in both lobby and gameplay
 let bgMusicTimer = null;
 let musicStep = 0;
 const CALM_NOTES = [
@@ -257,22 +280,22 @@ const CALM_NOTES = [
 ];
 
 function startBgMusic() {
-  stopBgMusic();
+  if (bgMusicTimer) return;
   bgMusicTimer = setInterval(() => {
-    if (!inGame || !state.sound) return;
+    if (!state.sound) return;
     try {
       if (audioCtx.state === 'suspended') audioCtx.resume();
       const freq = CALM_NOTES[musicStep % CALM_NOTES.length];
       musicStep++;
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
-      osc.type = 'sine';
+      osc.type = 'triangle';
       osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
       gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.025, audioCtx.currentTime + 0.15);
+      gain.gain.linearRampToValueAtTime(0.11, audioCtx.currentTime + 0.14);
       gain.gain.exponentialRampToValueAtTime(0.0005, audioCtx.currentTime + 1.1);
       osc.connect(gain);
-      gain.connect(audioCtx.destination);
+      gain.connect(getAudioOutput());
       osc.start();
       osc.stop(audioCtx.currentTime + 1.15);
     } catch(e) {}
@@ -285,3 +308,10 @@ function stopBgMusic() {
     bgMusicTimer = null;
   }
 }
+
+window.addEventListener('pointerdown', () => {
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {});
+  }
+  startBgMusic();
+}, { passive: true });

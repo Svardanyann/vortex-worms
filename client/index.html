@@ -33,14 +33,13 @@
     </div>
   </div>
 
-  <!-- Top Right: Coins & Language -->
+  <!-- Top Right: Coins -->
   <div class="top-right-bar">
     <div class="coin-pill">
-      <span class="coin-icon">🪙</span>
+      <span class="coin-icon"><svg width="18" height="18" viewBox="0 0 24 24" style="vertical-align:-3px;"><defs><radialGradient id="gCoin1" cx="35%" cy="30%" r="70%"><stop offset="0%" stop-color="#fef08a"/><stop offset="55%" stop-color="#facc15"/><stop offset="100%" stop-color="#b45309"/></radialGradient></defs><circle cx="12" cy="12" r="10.5" fill="url(#gCoin1)" stroke="#fde047" stroke-width="1.5"/><circle cx="12" cy="12" r="7" fill="none" stroke="#92400e" stroke-width="1.2" opacity="0.65"/><ellipse cx="9" cy="8" rx="2.5" ry="1.4" transform="rotate(-30 9 8)" fill="#fff" opacity="0.65"/></svg></span>
       <span class="coin-val" id="lobbyCoins">250</span>
       <button class="plus-btn ui-btn" id="addFreeCoinsBtn">+</button>
     </div>
-    <button class="lang-btn ui-btn" id="langToggleBtn">ՀԱՅ</button>
   </div>
 
   <!-- Right Vertical Promo Banners -->
@@ -130,7 +129,7 @@
         <span id="langSettingLabel" style="font-weight:800;">Լեզու / Language</span>
         <button class="hud-mini-btn" id="cycleLangSettingBtn">Հայերեն</button>
       </div>
-      <div class="setting-row">
+      <div class="setting-row" id="fsSettingRow">
         <span id="fsSettingLabel" style="font-weight:800;">Ամբողջ էկրան</span>
         <button class="hud-mini-btn" id="fsSettingBtn">⛶ Բացել</button>
       </div>
@@ -154,8 +153,8 @@
   <canvas id="gameCanvas"></canvas>
 
   <div class="hud-top-left">
-    <div><span id="hudScoreLabel">Միավոր</span>: <span id="scoreVal" style="color:#ffd166;">10</span></div>
-    <div><span id="hudCoinsLabel">Մետաղադրամ</span>: <span id="gameCoinsVal" style="color:#80ed99;">250</span> 🪙</div>
+    <div><span id="hudScoreLabel">Միավոր</span>: <span id="scoreVal" style="color:#ffd166;">0</span></div>
+    <div><span id="hudCoinsLabel">Մետաղադրամ</span>: <span id="gameCoinsVal" style="color:#80ed99;">250</span> <svg width="15" height="15" viewBox="0 0 24 24" style="vertical-align:-2px;"><defs><radialGradient id="gCoin2" cx="35%" cy="30%" r="70%"><stop offset="0%" stop-color="#fef08a"/><stop offset="55%" stop-color="#facc15"/><stop offset="100%" stop-color="#b45309"/></radialGradient></defs><circle cx="12" cy="12" r="10.5" fill="url(#gCoin2)" stroke="#fde047" stroke-width="1.5"/><circle cx="12" cy="12" r="7" fill="none" stroke="#92400e" stroke-width="1.2" opacity="0.65"/><ellipse cx="9" cy="8" rx="2.5" ry="1.4" transform="rotate(-30 9 8)" fill="#fff" opacity="0.65"/></svg></div>
   </div>
 
   <div id="activeEffects"></div>
@@ -164,17 +163,13 @@
 
   <div class="hud-top-right">
     <div class="hud-btns">
-      <button class="hud-mini-btn" id="gameSoundBtn">🔊</button>
       <button class="hud-mini-btn" id="gameFsBtn">⛶</button>
-      <button class="hud-mini-btn" id="exitToLobbyBtn">🏠</button>
     </div>
     <div class="leaderboard-box">
       <div class="lb-title" id="lbTitleText">ԱՌԱՋԱՏԱՐՆԵՐ</div>
       <div id="leaderboardList"></div>
     </div>
   </div>
-
-  <button id="boostBtn">ԱՐԱԳ</button>
 </div>
 
 <!-- GAME OVER SCREEN -->
@@ -184,13 +179,12 @@
     <div style="font-size:18px;font-weight:800;">
       <span id="goScoreLabel">Քո միավորները</span>: <span id="finalScore" style="color:#ffd166;">0</span>
     </div>
-    <div style="font-size:15px;color:#80ed99;font-weight:700;" id="goRewardText">+25 🪙 | +40 XP</div>
+    <div style="font-size:15px;color:#80ed99;font-weight:700;" id="goRewardText">+25 | +40 XP</div>
     <button class="play-main-btn ui-btn" id="playAgainBtn" style="font-size:20px;padding:12px;">ՆՈՐԻՑ ԽԱՂԱԼ</button>
     <button class="workshop-btn ui-btn" id="goLobbyBtn">Գլխավոր էջ</button>
   </div>
 </div>
 
-    
     <script src="i18n.js?v=2"></script>
     <script src="lobby.js?v=2"></script>
     <script src="engine.js?v=2"></script>

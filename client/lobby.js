@@ -1,7 +1,16 @@
+// ================= DEVICE & UI HELPERS =================
+function isMobileOrTouchDevice() {
+  const { protocol, hostname, port } = window.location;
+  const isCap = protocol === 'capacitor:' || protocol === 'file:' || (hostname === 'localhost' && !port);
+  return isCap || (navigator.maxTouchPoints > 0 && window.innerWidth <= 1024);
+}
+
 // ================= APPLY LANGUAGE & UI =================
 function updateUI() {
   const t = I18N[state.lang];
-  document.getElementById('langToggleBtn').textContent = t.code;
+  const langToggleBtn = document.getElementById('langToggleBtn');
+  if (langToggleBtn) langToggleBtn.remove();
+
   document.getElementById('logoSubText').textContent = t.sub;
   document.getElementById('startGameBtn').textContent = t.play;
   document.getElementById('openShopBtn').textContent = t.workshop;
@@ -33,13 +42,22 @@ function updateUI() {
   document.getElementById('hudScoreLabel').textContent = t.score;
   document.getElementById('hudCoinsLabel').textContent = t.coins;
   document.getElementById('lbTitleText').textContent = t.lb;
-  document.getElementById('boostBtn').textContent = t.boost;
   document.getElementById('shieldNotice').textContent = t.shieldEnd;
   document.getElementById('goTitle').textContent = t.gameOver;
   document.getElementById('goScoreLabel').textContent = t.yourScore;
   document.getElementById('playAgainBtn').textContent = t.playAgain;
   document.getElementById('goLobbyBtn').textContent = t.toLobby;
-  document.getElementById('gameSoundBtn').textContent = state.sound ? '🔊' : '🔇';
+
+  // Hide fullscreen buttons on phone, keep on PC
+  const isPhone = isMobileOrTouchDevice();
+  const fsLobbyBtn = document.getElementById('fullscreenLobbyBtn');
+  if (fsLobbyBtn) fsLobbyBtn.style.display = isPhone ? 'none' : '';
+  const fsGameBtn = document.getElementById('gameFsBtn');
+  if (fsGameBtn) fsGameBtn.style.display = isPhone ? 'none' : '';
+  const fsSettingRow = document.getElementById('fsSettingRow');
+  if (fsSettingRow) fsSettingRow.style.display = isPhone ? 'none' : '';
+
+  if (state.sound) startBgMusic();
 }
 
 function toggleFullscreen() {
@@ -302,7 +320,7 @@ function renderShop() {
       </div>
       <div class="skin-name">${skin.name[state.lang]}</div>
       <button class="skin-action-btn ${owned ? '' : 'buy'}">
-        ${selected ? t.selected : (owned ? t.select : skin.price + ' 🪙')}
+        ${selected ? t.selected : (owned ? t.select : `${skin.price} ${GOLD_COIN_SVG}`)}
       </button>
     `;
     div.addEventListener('click', () => {
@@ -401,12 +419,6 @@ document.getElementById('saveProfileBtn').addEventListener('click', () => {
 });
 
 document.getElementById('openSettingsBtn').addEventListener('click', () => openModal('settingsModal'));
-document.getElementById('langToggleBtn').addEventListener('click', () => {
-  const idx = (LANGS.indexOf(state.lang) + 1) % LANGS.length;
-  state.lang = LANGS[idx];
-  saveState();
-  updateUI();
-});
 document.getElementById('cycleLangSettingBtn').addEventListener('click', () => {
   const idx = (LANGS.indexOf(state.lang) + 1) % LANGS.length;
   state.lang = LANGS[idx];

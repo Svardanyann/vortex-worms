@@ -99,7 +99,7 @@ let lastFrameTime = 0;
 let currentZoom = 1.24;
 let lastStartAt = 0;
 
-// Floating Joystick & Double-Tap Boost State
+// Floating Joystick & 2nd-Finger / Double-Tap Boost State
 const JOY_MAX_RADIUS = 46;
 const DOUBLE_TAP_MS = 320;
 const DOUBLE_TAP_DIST = 80;
@@ -112,6 +112,7 @@ let joyKnobX = 0;
 let joyKnobY = 0;
 
 let boostPointerId = null;
+let doubleTapJoyBoost = false;
 let spaceBoosting = false;
 let pendingTaps = new Map();
 let lastCompletedTap = { time: 0, x: 0, y: 0 };
@@ -314,6 +315,9 @@ function ensureSocketInitialized() {
             if (prev && sp.score > prev.score + 1) {
               mouthTimer = 0.28;
             }
+            const initialPath = (sp.segments && sp.segments.length > 0)
+              ? sp.segments.map(s => ({ x: s.x, y: s.y }))
+              : [{ x: sp.x, y: sp.y }];
             others.push({
               id: sp.id,
               name: sp.name,
@@ -327,7 +331,8 @@ function ensureSocketInitialized() {
               score: sp.score,
               shieldTime: sp.shield || 0,
               mouthTimer,
-              segments: sp.segments || [],
+              path: prev && prev.path ? prev.path : initialPath,
+              segments: prev && prev.segments ? prev.segments : initialPath,
               isPlayer: false,
               effects: {}
             });
@@ -421,25 +426,6 @@ function disconnectMultiplayer() {
   }, 150);
 }
 
-async function lockLandscapeOrientation() {
-  try {
-    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-      await document.documentElement.requestFullscreen().catch(() => {});
-    }
-    if (screen.orientation && screen.orientation.lock) {
-      await screen.orientation.lock('landscape').catch(() => {});
-    }
-  } catch (err) {}
-}
-
-function unlockOrientation() {
-  try {
-    if (screen.orientation && screen.orientation.unlock) {
-      screen.orientation.unlock();
-    }
-  } catch (err) {}
-}
-
 function randomPointInSquareArena(margin = 160) {
   const limit = ARENA_HALF - margin;
   return {
@@ -459,7 +445,7 @@ function populateDenseFruits() {
   foods = [];
   foodsById.clear();
   respawnQueue = [];
-  const clusterCount = 800;
+  const clusterCount = 1350;
   for (let c = 0; c < clusterCount; c++) {
     const center = randomPointInSquareArena(160);
     const itemsInCluster = 2 + Math.floor(Math.random() * 3);
@@ -543,6 +529,7 @@ function resetTouchControls() {
   joyActive = false;
   joyPointerId = null;
   boostPointerId = null;
+  doubleTapJoyBoost = false;
   spaceBoosting = false;
   isBoosting = false;
   pendingTaps.clear();
@@ -550,7 +537,7 @@ function resetTouchControls() {
 }
 
 function updateBoostState() {
-  const nextBoost = spaceBoosting || boostPointerId !== null;
+  const nextBoost = spaceBoosting || boostPointerId !== null || doubleTapJoyBoost;
   if (isBoosting !== nextBoost) {
     isBoosting = nextBoost;
     sendMultiplayerInput(true);
@@ -565,10 +552,10 @@ function startGame() {
   inGame = true;
   resetTouchControls();
   document.body.classList.add('in-game');
-  lockLandscapeOrientation();
 
   document.getElementById('lobbyScreen').style.display = 'none';
-  document.getElementById('gameOverScreen').style.display = 'none';
+  const goScreen = document.getElementById('gameOverScreen');
+  goScreen.style.display = 'none';
   document.getElementById('gameContainer').style.display = 'block';
   document.getElementById('killToastContainer').innerHTML = '';
 
@@ -620,8 +607,6 @@ function exitToLobby() {
   resetTouchControls();
   disconnectMultiplayer();
   document.body.classList.remove('in-game');
-  unlockOrientation();
-  stopBgMusic();
   if (gameAnimId) cancelAnimationFrame(gameAnimId);
   document.getElementById('gameContainer').style.display = 'none';
   document.getElementById('gameOverScreen').style.display = 'none';
@@ -629,40 +614,41 @@ function exitToLobby() {
   updateUI();
 }
 
-// Remove old Boost button from screen
-const boostBtn = document.getElementById('boostBtn');
-if (boostBtn) boostBtn.remove();
-
-// Full-Screen Floating Joystick + Double-Tap & Hold Boost
+// 1st Finger = Floating Joystick | 2nd Finger = Instant Boost | Single-Finger Double-Tap = Joystick + Boost
 gameCanvas.addEventListener('pointerdown', (e) => {
   if (!inGame || !player) return;
   if (e.pointerType === 'mouse' && e.button !== 0) return;
 
   const now = performance.now();
-  const isDoubleTap =
-    (now - lastCompletedTap.time) <= DOUBLE_TAP_MS &&
-    Math.hypot(e.clientX - lastCompletedTap.x, e.clientY - lastCompletedTap.y) <= DOUBLE_TAP_DIST;
-
-  if (isDoubleTap) {
-    lastCompletedTap.time = 0;
-    boostPointerId = e.pointerId;
-    updateBoostState();
-  } else {
-    pendingTaps.set(e.pointerId, {
-      downTime: now,
-      downX: e.clientX,
-      downY: e.clientY,
-      moved: false
-    });
-  }
 
   if (joyPointerId === null) {
+    const isDoubleTap =
+      (now - lastCompletedTap.time) <= DOUBLE_TAP_MS &&
+      Math.hypot(e.clientX - lastCompletedTap.x, e.clientY - lastCompletedTap.y) <= DOUBLE_TAP_DIST;
+
     joyPointerId = e.pointerId;
     joyActive = true;
     joyOriginX = e.clientX;
     joyOriginY = e.clientY;
     joyKnobX = e.clientX;
     joyKnobY = e.clientY;
+
+    if (isDoubleTap) {
+      lastCompletedTap.time = 0;
+      doubleTapJoyBoost = true;
+      updateBoostState();
+    } else {
+      pendingTaps.set(e.pointerId, {
+        downTime: now,
+        downX: e.clientX,
+        downY: e.clientY,
+        moved: false
+      });
+    }
+  } else if (boostPointerId === null && e.pointerId !== joyPointerId) {
+    // 2nd finger immediately triggers boost
+    boostPointerId = e.pointerId;
+    updateBoostState();
   }
 });
 
@@ -723,6 +709,10 @@ function handlePointerRelease(e) {
   if (e.pointerId === joyPointerId) {
     joyPointerId = null;
     joyActive = false;
+    if (doubleTapJoyBoost) {
+      doubleTapJoyBoost = false;
+      updateBoostState();
+    }
   }
 
   if (e.pointerId === boostPointerId) {
@@ -749,14 +739,9 @@ window.addEventListener('keyup', (e) => {
 
 document.getElementById('startGameBtn').addEventListener('click', startGame);
 document.getElementById('playAgainBtn').addEventListener('click', startGame);
-document.getElementById('exitToLobbyBtn').addEventListener('click', exitToLobby);
 document.getElementById('goLobbyBtn').addEventListener('click', exitToLobby);
-document.getElementById('gameFsBtn').addEventListener('click', toggleFullscreen);
-document.getElementById('gameSoundBtn').addEventListener('click', () => {
-  state.sound = !state.sound;
-  saveState();
-  updateUI();
-});
+const gameFsBtnEl = document.getElementById('gameFsBtn');
+if (gameFsBtnEl) gameFsBtnEl.addEventListener('click', toggleFullscreen);
 
 function killWorm(worm, allWorms, killer = null) {
   if (!mpConnected) {
@@ -779,8 +764,13 @@ function killWorm(worm, allWorms, killer = null) {
   if (worm.isPlayer) {
     playTone(150, 'sawtooth', 0.35, 0.12);
     inGame = false;
+    if (gameAnimId) {
+      cancelAnimationFrame(gameAnimId);
+      gameAnimId = null;
+    }
     resetTouchControls();
-    stopBgMusic();
+    document.body.classList.remove('in-game');
+
     const earnedCoins = Math.max(5, Math.floor(player.score / 25));
     const earnedXp = Math.max(10, Math.floor(player.score / 15));
     state.coins += earnedCoins;
@@ -795,8 +785,10 @@ function killWorm(worm, allWorms, killer = null) {
     updateUI();
 
     document.getElementById('finalScore').textContent = Math.floor(player.score);
-    document.getElementById('goRewardText').textContent = `+${earnedCoins} 🪙 | +${earnedXp} XP`;
-    document.getElementById('gameOverScreen').style.display = 'flex';
+    document.getElementById('goRewardText').innerHTML = `+${earnedCoins} ${GOLD_COIN_SVG} | +${earnedXp} XP`;
+    const goScreen = document.getElementById('gameOverScreen');
+    goScreen.style.zIndex = '99999';
+    goScreen.style.display = 'flex';
   } else {
     const idx = allWorms.indexOf(worm);
     if (idx !== -1) {

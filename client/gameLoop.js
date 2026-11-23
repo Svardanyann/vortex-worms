@@ -343,8 +343,8 @@ function drawWorm(worm) {
 
 function drawMinimap() {
   let x0 = 12;
-  let y0 = 56;
-  let size = 90;
+  let y0 = 52;
+  const size = 64;
 
   const coinsEl = document.getElementById('gameCoinsVal');
   const coinsPill = coinsEl ? coinsEl.parentElement : null;
@@ -352,8 +352,7 @@ function drawMinimap() {
     const rect = coinsPill.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
       x0 = Math.round(rect.left);
-      y0 = Math.round(rect.bottom + 8);
-      size = Math.max(76, Math.round(rect.width));
+      y0 = Math.round(rect.bottom + 6);
     }
   }
 
@@ -361,36 +360,36 @@ function drawMinimap() {
   const cy = y0 + size / 2;
 
   gCtx.save();
-  gCtx.fillStyle = 'rgba(10, 20, 35, 0.34)';
-  gCtx.strokeStyle = 'rgba(255, 255, 255, 0.24)';
-  gCtx.lineWidth = 1.5;
+  gCtx.fillStyle = 'rgba(10, 20, 35, 0.18)';
+  gCtx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+  gCtx.lineWidth = 1;
   gCtx.beginPath();
-  gCtx.roundRect(x0, y0, size, size, 10);
+  gCtx.roundRect(x0, y0, size, size, 8);
   gCtx.fill();
   gCtx.stroke();
 
-  gCtx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  gCtx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
   gCtx.lineWidth = 1;
   gCtx.beginPath();
-  gCtx.moveTo(cx, y0 + 6);
-  gCtx.lineTo(cx, y0 + size - 6);
-  gCtx.moveTo(x0 + 6, cy);
-  gCtx.lineTo(x0 + size - 6, cy);
+  gCtx.moveTo(cx, y0 + 5);
+  gCtx.lineTo(cx, y0 + size - 5);
+  gCtx.moveTo(x0 + 5, cy);
+  gCtx.lineTo(x0 + size - 5, cy);
   gCtx.stroke();
 
-  const scale = (size / 2 - 6) / ARENA_HALF;
+  const scale = (size / 2 - 5) / ARENA_HALF;
   const others = mpConnected ? remoteWorms : bots;
   others.forEach(b => {
-    gCtx.fillStyle = 'rgba(255, 107, 107, 0.85)';
+    gCtx.fillStyle = 'rgba(255, 107, 107, 0.75)';
     gCtx.beginPath();
-    gCtx.arc(cx + b.x * scale, cy + b.y * scale, 2, 0, Math.PI * 2);
+    gCtx.arc(cx + b.x * scale, cy + b.y * scale, 1.8, 0, Math.PI * 2);
     gCtx.fill();
   });
 
   if (player) {
-    gCtx.fillStyle = '#80ed99';
+    gCtx.fillStyle = 'rgba(128, 237, 153, 0.9)';
     gCtx.beginPath();
-    gCtx.arc(cx + player.x * scale, cy + player.y * scale, 3.5, 0, Math.PI * 2);
+    gCtx.arc(cx + player.x * scale, cy + player.y * scale, 2.8, 0, Math.PI * 2);
     gCtx.fill();
   }
   gCtx.restore();
@@ -447,6 +446,18 @@ function gameLoop(now) {
       while (aDiff > Math.PI) aDiff -= Math.PI * 2;
       while (aDiff < -Math.PI) aDiff += Math.PI * 2;
       rw.angle += aDiff * lerp;
+
+      // Build remote body segments smoothly from head path (eliminates jitter)
+      if (!rw.path || rw.path.length === 0) {
+        rw.path = [{ x: rw.x, y: rw.y }];
+      }
+      if (Math.hypot(rw.x - rw.path[0].x, rw.y - rw.path[0].y) >= 1.2) {
+        rw.path.unshift({ x: rw.x, y: rw.y });
+      } else {
+        rw.path[0].x = rw.x;
+        rw.path[0].y = rw.y;
+      }
+      updateSegmentsFromPath(rw);
     });
   }
 

@@ -6,7 +6,7 @@ const { WebSocketServer } = require('ws');
 const PORT = process.env.PORT || 3000;
 const ARENA_HALF = 4500;
 const TICK_RATE = 25;
-const FOOD_COUNT = 2000;
+const FOOD_COUNT = 4000;
 
 const FRUITS = [
   { emoji: '🍒', val: 2, r: 9 },
@@ -279,7 +279,7 @@ function killPlayer(victim, killer) {
   const watermelonIdx = FRUITS.length - 1;
   for (let i = 0; i < victim.segments.length; i += 2) {
     const seg = victim.segments[i];
-    if (foods.length < 3200) {
+    if (foods.length < 5200) {
       const drop = createFood(
         seg.x + (Math.random() - 0.5) * 18,
         seg.y + (Math.random() - 0.5) * 18,
