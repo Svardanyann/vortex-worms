@@ -80,11 +80,11 @@ function resizeLobby() {
 window.addEventListener('resize', resizeLobby);
 resizeLobby();
 
-// Matches in-game starting worm exact proportions and natural tail taper
+// Smooth tubular worm matching in-game proportions
 const lobbyWorm = {
   segments: [],
-  segCount: 16,
-  segDist: 6.0,
+  segCount: 24,
+  segDist: 3.3,
   radius: 13,
   angle: 0,
   speed: 1.5,
@@ -255,14 +255,13 @@ function updateAndDrawLobbyWorm() {
   const skin = SKINS.find(s => s.id === state.selectedSkin) || SKINS[0];
   const r = lobbyWorm.radius;
   const len = lobbyWorm.segments.length;
-  const taperStart = len * 0.65;
 
   for (let i = len - 1; i >= 1; i--) {
     const s = lobbyWorm.segments[i];
-    const segR = i <= taperStart
-      ? r
-      : r * (1 - 0.48 * ((i - taperStart) / Math.max(1, len - 1 - taperStart)));
-    lCtx.fillStyle = skin.colors[i % skin.colors.length];
+    const distFromTail = len - 1 - i;
+    const tipScale = distFromTail < 4 ? (0.76 + (distFromTail / 4) * 0.24) : 1.0;
+    const segR = r * tipScale;
+    lCtx.fillStyle = skin.colors[Math.floor(i / 2) % skin.colors.length];
     lCtx.beginPath();
     lCtx.arc(s.x, s.y, segR, 0, Math.PI * 2);
     lCtx.fill();

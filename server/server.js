@@ -100,6 +100,23 @@ function randomArenaPos(margin = 200) {
   };
 }
 
+function findSafeSpawnPos(margin = 500, minDist = 450) {
+  let candidate = randomArenaPos(margin);
+  for (let attempt = 0; attempt < 25; attempt++) {
+    candidate = randomArenaPos(margin);
+    let tooClose = false;
+    for (const p of players.values()) {
+      if (!p.alive) continue;
+      if (Math.hypot(p.x - candidate.x, p.y - candidate.y) < minDist) {
+        tooClose = true;
+        break;
+      }
+    }
+    if (!tooClose) return candidate;
+  }
+  return candidate;
+}
+
 function createFood(x, y, forcedIdx = null) {
   const pos = (x !== undefined && y !== undefined) ? { x, y } : randomArenaPos(160);
   const fIdx = forcedIdx !== null
@@ -134,13 +151,13 @@ function calcRadius(score) {
 }
 
 function calcSegmentsCount(score) {
-  return Math.min(320, Math.floor(8 + Math.pow(Math.max(0, score), 0.56) * 1.45));
+  return Math.min(560, Math.floor(14 + Math.pow(Math.max(0, score), 0.56) * 2.5));
 }
 
 function updatePlayerSegmentsFromPath(p) {
   const targetSegs = calcSegmentsCount(p.score);
   const r = calcRadius(p.score);
-  const spacing = Math.max(5.2, r * 0.44);
+  const spacing = Math.max(3.0, r * 0.25);
   if (!p.path || p.path.length === 0) {
     p.path = [{ x: p.x, y: p.y }];
   }
@@ -182,7 +199,7 @@ function updatePlayerSegmentsFromPath(p) {
 
 function createPlayer(id, name, colors, spawnHint = null) {
   const limit = ARENA_HALF - 500;
-  let spawn = randomArenaPos(500);
+  let spawn = findSafeSpawnPos(500, 450);
   let angle = Math.random() * Math.PI * 2;
 
   if (spawnHint && typeof spawnHint.x === 'number' && typeof spawnHint.y === 'number' &&
@@ -197,7 +214,7 @@ function createPlayer(id, name, colors, spawnHint = null) {
   }
 
   const segments = [];
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 14; i++) {
     segments.push({ x: spawn.x, y: spawn.y });
   }
 
@@ -233,7 +250,7 @@ function createBot() {
   bot.aiTargetAngle = bot.angle;
 
   const targetSegs = calcSegmentsCount(bot.score);
-  const spacing = Math.max(5.2, calcRadius(bot.score) * 0.44);
+  const spacing = Math.max(3.0, calcRadius(bot.score) * 0.25);
   bot.path = [];
   bot.segments = [];
   for (let i = 0; i < targetSegs; i++) {
@@ -277,12 +294,25 @@ function updateBotAI(bot, dt, allAlive) {
     return;
   }
 
+  // Keep distance from other worm heads so bots never stack on top of each other
+  for (const other of allAlive) {
+    if (other.id === bot.id || !other.alive) continue;
+    const hdx = bot.x - other.x;
+    const hdy = bot.y - other.y;
+    if (hdx * hdx + hdy * hdy < 130 * 130) {
+      bot.aiTargetAngle = Math.atan2(hdy, hdx);
+      bot.boosting = false;
+      bot.targetAngle = bot.aiTargetAngle;
+      return;
+    }
+  }
+
   const lookX = bot.x + Math.cos(bot.angle) * 95;
   const lookY = bot.y + Math.sin(bot.angle) * 95;
   let dangerWorm = null;
   for (const other of allAlive) {
     if (other.id === bot.id || !other.alive) continue;
-    for (let s = 0; s < other.segments.length; s += 2) {
+    for (let s = 0; s < other.segments.length; s += 3) {
       const seg = other.segments[s];
       const dx = lookX - seg.x;
       const dy = lookY - seg.y;
@@ -404,7 +434,7 @@ function killPlayer(victim, killer) {
   victim.alive = false;
 
   const watermelonIdx = FRUITS.length - 1;
-  for (let i = 0; i < victim.segments.length; i += 2) {
+  for (let i = 0; i < victim.segments.length; i += 3) {
     const seg = victim.segments[i];
     if (foods.length < 5200) {
       const drop = createFood(
@@ -459,9 +489,9 @@ function stepSimulation(dt) {
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
 
-    const sizeFactor = Math.max(0.72, 10.5 / r);
-    const maxTurnRate = 5.4 * sizeFactor;
-    const step = diff * Math.min(1, dt * 11);
+    // Turn radius strictly matches worm body thickness r (no hollow circle inside)
+    const maxTurnRate = p.isBot ? (speed / (r * 1.45)) : (speed / (r * 0.92));
+    const step = diff * Math.min(1, dt * 32);
     p.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
 
     if (canBoost) {
@@ -514,7 +544,7 @@ function stepSimulation(dt) {
       if (p1.id === p2.id || !p2.alive) continue;
       const r2 = calcRadius(p2.score) * 0.78;
 
-      for (let s = 2; s < p2.segments.length; s++) {
+      for (let s = 4; s < p2.segments.length; s += 2) {
         const seg = p2.segments[s];
         const dx = p1.x - seg.x;
         const dy = p1.y - seg.y;

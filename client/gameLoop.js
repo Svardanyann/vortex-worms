@@ -21,11 +21,11 @@ window.addEventListener('resize', () => {
   }
 });
 
-// Place body segments along the exact ground path of the head (zero sideways drift)
+// Place body segments densely along the exact ground path of the head
 function updateSegmentsFromPath(worm) {
   const targetLen = calcTargetSegments(worm.score);
   const r = calcWormRadius(worm.score);
-  const segSpacing = Math.max(5.2, r * 0.44);
+  const segSpacing = Math.max(3.0, r * 0.25);
   if (!worm.path || worm.path.length === 0) {
     worm.path = [{ x: worm.x, y: worm.y }];
   }
@@ -96,9 +96,9 @@ function updateWorm(worm, dt) {
     while (turnDiff > Math.PI) turnDiff -= Math.PI * 2;
     while (turnDiff < -Math.PI) turnDiff += Math.PI * 2;
 
-    const sizeFactor = Math.max(0.72, 10.5 / rHead);
-    const maxTurnRate = 5.4 * sizeFactor;
-    const step = turnDiff * Math.min(1, dt * 11);
+    // Turn radius strictly matches worm body thickness rHead (no hollow circle inside)
+    const maxTurnRate = speed / (rHead * 0.92);
+    const step = turnDiff * Math.min(1, dt * 32);
     worm.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
     sendMultiplayerInput();
   } else {
@@ -115,8 +115,8 @@ function updateWorm(worm, dt) {
     turnDiff = worm.aiTargetAngle - worm.angle;
     while (turnDiff > Math.PI) turnDiff -= Math.PI * 2;
     while (turnDiff < -Math.PI) turnDiff += Math.PI * 2;
-    const maxTurnRate = 4.8;
-    const step = turnDiff * Math.min(1, dt * 10);
+    const maxTurnRate = speed / (rHead * 1.45);
+    const step = turnDiff * Math.min(1, dt * 18);
     worm.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
   }
 
@@ -245,7 +245,7 @@ function checkWormCollisions() {
       if (!w2) continue;
       const r2 = calcWormRadius(w2.score) * 0.78;
 
-      for (let s = 2; s < w2.segments.length; s++) {
+      for (let s = 4; s < w2.segments.length; s += 2) {
         const seg = w2.segments[s];
         if (Math.hypot(w1.x - seg.x, w1.y - seg.y) < r1 + r2) {
           killWorm(w1, bots, w2);
@@ -261,13 +261,6 @@ function drawWorm(worm) {
   const r = calcWormRadius(worm.score);
   const len = worm.segments.length;
   if (len === 0) return;
-
-  const taperStart = len * 0.65;
-  const getSegRadius = (idx) => {
-    if (idx <= taperStart) return r;
-    const ratio = (idx - taperStart) / Math.max(1, len - 1 - taperStart);
-    return r * (1 - 0.48 * ratio);
-  };
 
   if (worm.spawnHole && worm.spawnHole.alpha > 0) {
     gCtx.save();
@@ -288,16 +281,15 @@ function drawWorm(worm) {
     gCtx.restore();
   }
 
-  // Golden outer glow when boosting, following natural tail taper
+  // Uniform outer golden glow behind body when boosting
   if (worm.isBoostingActive) {
     const pulse = 0.85 + 0.15 * Math.sin(performance.now() * 0.02);
     gCtx.save();
-    gCtx.fillStyle = 'rgba(250, 204, 21, 0.26)';
-    for (let i = len - 1; i >= 0; i--) {
+    gCtx.fillStyle = 'rgba(250, 204, 21, 0.24)';
+    for (let i = len - 1; i >= 0; i -= 2) {
       const seg = worm.segments[i];
-      const segR = getSegRadius(i);
       gCtx.beginPath();
-      gCtx.arc(seg.x, seg.y, segR + 4.5 * pulse, 0, Math.PI * 2);
+      gCtx.arc(seg.x, seg.y, r + 4.5 * pulse, 0, Math.PI * 2);
       gCtx.fill();
     }
     gCtx.restore();
@@ -312,10 +304,14 @@ function drawWorm(worm) {
     gCtx.stroke();
   }
 
+  // Smooth tubular body: uniform thickness with gentle 4-segment rounded tail tip
   for (let i = len - 1; i >= 1; i--) {
     const seg = worm.segments[i];
-    const segR = getSegRadius(i);
-    gCtx.fillStyle = worm.colors[i % worm.colors.length];
+    const distFromTail = len - 1 - i;
+    const tipScale = distFromTail < 4 ? (0.76 + (distFromTail / 4) * 0.24) : 1.0;
+    const segR = r * tipScale;
+
+    gCtx.fillStyle = worm.colors[Math.floor(i / 2) % worm.colors.length];
     gCtx.beginPath();
     gCtx.arc(seg.x, seg.y, segR, 0, Math.PI * 2);
     gCtx.fill();
@@ -488,6 +484,7 @@ function gameLoop(now) {
       while (aDiff < -Math.PI) aDiff += Math.PI * 2;
       rw.angle += aDiff * lerp;
 
+      // Build remote body segments smoothly from head path (eliminates jitter)
       if (!rw.path || rw.path.length === 0) {
         rw.path = [{ x: rw.x, y: rw.y }];
       }

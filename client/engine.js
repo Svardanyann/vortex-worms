@@ -472,7 +472,7 @@ function populateDenseFruits() {
 }
 
 function calcTargetSegments(score) {
-  return Math.min(340, Math.floor(8 + Math.pow(Math.max(0, score), 0.56) * 1.45));
+  return Math.min(560, Math.floor(14 + Math.pow(Math.max(0, score), 0.56) * 2.5));
 }
 
 function calcWormRadius(score) {
@@ -484,10 +484,10 @@ function createWorm(x, y, name, skinColors, isPlayer = false, initialAngle = nul
     ? initialAngle
     : Math.random() * Math.PI * 2;
   const segs = [];
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 14; i++) {
     segs.push(emergeFromGround
       ? { x, y }
-      : { x: x - Math.cos(angle) * i * 5.2, y: y - Math.sin(angle) * i * 5.2 }
+      : { x: x - Math.cos(angle) * i * 3.0, y: y - Math.sin(angle) * i * 3.0 }
     );
   }
   return {
@@ -518,9 +518,10 @@ function spawnBot() {
   const bot = createWorm(pos.x, pos.y, botNames[Math.floor(Math.random() * botNames.length)], skin.colors, false, null, false);
   bot.score = 10 + Math.floor(Math.random() * 180);
   const targetSegs = calcTargetSegments(bot.score);
+  const spacing = Math.max(3.0, calcWormRadius(bot.score) * 0.25);
   bot.path = [];
   for (let i = 0; i < targetSegs; i++) {
-    const pt = { x: bot.x - Math.cos(bot.angle) * i * 5.2, y: bot.y - Math.sin(bot.angle) * i * 5.2 };
+    const pt = { x: bot.x - Math.cos(bot.angle) * i * spacing, y: bot.y - Math.sin(bot.angle) * i * spacing };
     bot.path.push(pt);
     if (i >= bot.segments.length) bot.segments.push({ ...pt });
     else bot.segments[i] = { ...pt };
@@ -759,7 +760,7 @@ if (gameFsBtnEl) gameFsBtnEl.addEventListener('click', toggleFullscreen);
 
 function killWorm(worm, allWorms, killer = null) {
   if (!mpConnected) {
-    for (let i = 0; i < worm.segments.length; i += 2) {
+    for (let i = 0; i < worm.segments.length; i += 3) {
       const s = worm.segments[i];
       const drop = createFruitItem(s.x + (Math.random() - 0.5) * 16, s.y + (Math.random() - 0.5) * 16);
       drop.t = FRUITS.length - 1;
