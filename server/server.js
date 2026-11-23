@@ -121,6 +121,48 @@ function calcSegmentsCount(score) {
   return Math.min(320, Math.floor(18 + Math.pow(Math.max(10, score), 0.56) * 1.45));
 }
 
+function updatePlayerSegmentsFromPath(p) {
+  const targetSegs = calcSegmentsCount(p.score);
+  const spacing = 6.2;
+  if (!p.path || p.path.length === 0) {
+    p.path = [{ x: p.x, y: p.y }];
+  }
+  p.path[0].x = p.x;
+  p.path[0].y = p.y;
+
+  const newSegs = [{ x: p.x, y: p.y }];
+  let pathIdx = 0;
+  let segDistAcc = 0;
+
+  for (let s = 1; s < targetSegs; s++) {
+    const targetDist = s * spacing;
+    while (pathIdx < p.path.length - 1) {
+      const p1 = p.path[pathIdx];
+      const p2 = p.path[pathIdx + 1];
+      const d = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      if (segDistAcc + d >= targetDist && d > 0.0001) {
+        const t = (targetDist - segDistAcc) / d;
+        newSegs.push({
+          x: p1.x + (p2.x - p1.x) * t,
+          y: p1.y + (p2.y - p1.y) * t
+        });
+        break;
+      }
+      segDistAcc += d;
+      pathIdx++;
+    }
+    if (newSegs.length <= s) {
+      const tailOrigin = p.path[p.path.length - 1];
+      newSegs.push({ x: tailOrigin.x, y: tailOrigin.y });
+    }
+  }
+
+  if (p.path.length > pathIdx + 3) {
+    p.path.length = pathIdx + 3;
+  }
+  p.segments = newSegs;
+}
+
 function createPlayer(id, name, colors, spawnHint = null) {
   const limit = ARENA_HALF - 500;
   let spawn = randomArenaPos(500);
@@ -137,13 +179,12 @@ function createPlayer(id, name, colors, spawnHint = null) {
     angle = spawnHint.angle;
   }
 
+  // Start all segments tucked inside the ground burrow at spawn point
   const segments = [];
   for (let i = 0; i < 18; i++) {
-    segments.push({
-      x: spawn.x - Math.cos(angle) * i * 6,
-      y: spawn.y - Math.sin(angle) * i * 6
-    });
+    segments.push({ x: spawn.x, y: spawn.y });
   }
+
   return {
     id,
     name: (name || 'Player').slice(0, 16),
@@ -156,6 +197,7 @@ function createPlayer(id, name, colors, spawnHint = null) {
     score: 10,
     kills: 0,
     shield: 4.0,
+    path: [{ x: spawn.x, y: spawn.y }],
     segments,
     alive: true
   };
@@ -279,7 +321,10 @@ function stepSimulation(dt) {
     let diff = p.targetAngle - p.angle;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
-    p.angle += diff * Math.min(1, dt * 10);
+
+    const maxTurnRate = 4.3;
+    const step = diff * Math.min(1, dt * 12);
+    p.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
 
     const canBoost = p.boosting && p.score > 15;
     const speed = canBoost ? 340 : 195;
@@ -289,6 +334,13 @@ function stepSimulation(dt) {
 
     p.x += Math.cos(p.angle) * speed * dt;
     p.y += Math.sin(p.angle) * speed * dt;
+
+    if (Math.hypot(p.x - p.path[0].x, p.y - p.path[0].y) >= 1.5) {
+      p.path.unshift({ x: p.x, y: p.y });
+    } else {
+      p.path[0].x = p.x;
+      p.path[0].y = p.y;
+    }
 
     const r = calcRadius(p.score);
     if (Math.abs(p.x) >= ARENA_HALF - r || Math.abs(p.y) >= ARENA_HALF - r) {
@@ -300,24 +352,7 @@ function stepSimulation(dt) {
       continue;
     }
 
-    const spacing = 6.2;
-    p.segments[0] = { x: p.x, y: p.y };
-    const targetSegs = calcSegmentsCount(p.score);
-    while (p.segments.length < targetSegs) {
-      const last = p.segments[p.segments.length - 1];
-      p.segments.push({ x: last.x, y: last.y });
-    }
-    while (p.segments.length > targetSegs && p.segments.length > 12) {
-      p.segments.pop();
-    }
-
-    for (let i = 1; i < p.segments.length; i++) {
-      const prev = p.segments[i - 1];
-      const curr = p.segments[i];
-      const a = Math.atan2(prev.y - curr.y, prev.x - curr.x);
-      curr.x = prev.x - Math.cos(a) * spacing;
-      curr.y = prev.y - Math.sin(a) * spacing;
-    }
+    updatePlayerSegmentsFromPath(p);
 
     const eatR = r + 14;
     for (let i = foods.length - 1; i >= 0; i--) {

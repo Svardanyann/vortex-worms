@@ -21,6 +21,50 @@ window.addEventListener('resize', () => {
   }
 });
 
+// Place body segments along the exact recorded path of the head (zero sideways drift)
+function updateSegmentsFromPath(worm) {
+  const targetLen = calcTargetSegments(worm.score);
+  const segSpacing = 6.2;
+  if (!worm.path || worm.path.length === 0) {
+    worm.path = [{ x: worm.x, y: worm.y }];
+  }
+  worm.path[0].x = worm.x;
+  worm.path[0].y = worm.y;
+
+  const newSegs = [{ x: worm.x, y: worm.y }];
+  let pathIdx = 0;
+  let segDistAcc = 0;
+
+  for (let s = 1; s < targetLen; s++) {
+    const targetDist = s * segSpacing;
+    while (pathIdx < worm.path.length - 1) {
+      const p1 = worm.path[pathIdx];
+      const p2 = worm.path[pathIdx + 1];
+      const d = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      if (segDistAcc + d >= targetDist && d > 0.0001) {
+        const t = (targetDist - segDistAcc) / d;
+        newSegs.push({
+          x: p1.x + (p2.x - p1.x) * t,
+          y: p1.y + (p2.y - p1.y) * t
+        });
+        break;
+      }
+      segDistAcc += d;
+      pathIdx++;
+    }
+    // Segments that haven't exited the ground burrow yet remain inside the hole
+    if (newSegs.length <= s) {
+      const tailOrigin = worm.path[worm.path.length - 1];
+      newSegs.push({ x: tailOrigin.x, y: tailOrigin.y });
+    }
+  }
+
+  if (worm.path.length > pathIdx + 3) {
+    worm.path.length = pathIdx + 3;
+  }
+  worm.segments = newSegs;
+}
+
 function updateWorm(worm, dt) {
   if (worm.shieldTime > 0) {
     const prevShield = worm.shieldTime;
@@ -40,16 +84,14 @@ function updateWorm(worm, dt) {
     if (worm.effects[k] > 0) worm.effects[k] = Math.max(0, worm.effects[k] - dt);
   }
 
-  // Wait ~100ms for server join confirmation before advancing so head never snaps back
-  if (worm.isPlayer && mpConnected && mpAwaitingJoinAck) {
-    return;
-  }
-
   if (worm.isPlayer) {
     let diff = pointerAngle - worm.angle;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
-    worm.angle += diff * Math.min(1, dt * 10);
+
+    const maxTurnRate = 4.3;
+    const step = diff * Math.min(1, dt * 12);
+    worm.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
     sendMultiplayerInput();
   } else {
     worm.aiTimer -= dt;
@@ -65,7 +107,9 @@ function updateWorm(worm, dt) {
     let diff = worm.aiTargetAngle - worm.angle;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
-    worm.angle += diff * Math.min(1, dt * 6);
+    const maxTurnRate = 3.6;
+    const step = diff * Math.min(1, dt * 8);
+    worm.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
   }
 
   const wantsBoost = worm.isPlayer ? isBoosting : false;
@@ -79,8 +123,18 @@ function updateWorm(worm, dt) {
   worm.x += Math.cos(worm.angle) * speed * dt;
   worm.y += Math.sin(worm.angle) * speed * dt;
 
-  // Smoothly advance server ghost and shift whole body together so head never folds into segments
-  if (mpConnected && worm.isPlayer && mpServerPos) {
+  if (!worm.path || worm.path.length === 0) {
+    worm.path = [{ x: worm.x, y: worm.y }];
+  }
+  if (Math.hypot(worm.x - worm.path[0].x, worm.y - worm.path[0].y) >= 1.5) {
+    worm.path.unshift({ x: worm.x, y: worm.y });
+  } else {
+    worm.path[0].x = worm.x;
+    worm.path[0].y = worm.y;
+  }
+
+  // Smooth server reconciliation shifting entire recorded path together
+  if (mpConnected && worm.isPlayer && mpServerPos && !mpAwaitingJoinAck) {
     const srvSpeed = (mpServerPos.boosting && worm.score > 15) ? 340 : 195;
     mpServerPos.x += Math.cos(mpServerPos.angle) * srvSpeed * dt;
     mpServerPos.y += Math.sin(mpServerPos.angle) * srvSpeed * dt;
@@ -94,7 +148,7 @@ function updateWorm(worm, dt) {
     if (errDist > 220) {
       corrX = errX;
       corrY = errY;
-    } else if (errDist > 1) {
+    } else if (errDist > 1.5) {
       const blend = Math.min(1, dt * 6);
       corrX = errX * blend;
       corrY = errY * blend;
@@ -103,9 +157,13 @@ function updateWorm(worm, dt) {
     if (corrX !== 0 || corrY !== 0) {
       worm.x += corrX;
       worm.y += corrY;
-      for (let i = 1; i < worm.segments.length; i++) {
-        worm.segments[i].x += corrX;
-        worm.segments[i].y += corrY;
+      for (let i = 0; i < worm.path.length; i++) {
+        worm.path[i].x += corrX;
+        worm.path[i].y += corrY;
+      }
+      if (worm.spawnHole) {
+        worm.spawnHole.x += corrX;
+        worm.spawnHole.y += corrY;
       }
     }
   }
@@ -116,31 +174,26 @@ function updateWorm(worm, dt) {
   if (Math.abs(worm.x) >= maxCoord || Math.abs(worm.y) >= maxCoord) {
     worm.x = Math.max(-maxCoord, Math.min(maxCoord, worm.x));
     worm.y = Math.max(-maxCoord, Math.min(maxCoord, worm.y));
+    worm.path[0].x = worm.x;
+    worm.path[0].y = worm.y;
     if (!mpConnected || !worm.isPlayer) {
       killWorm(worm, bots, null);
       return;
     }
   }
 
-  const segSpacing = 6.2;
-  worm.segments[0].x = worm.x;
-  worm.segments[0].y = worm.y;
+  updateSegmentsFromPath(worm);
 
-  const targetLen = calcTargetSegments(worm.score);
-  while (worm.segments.length < targetLen) {
-    const last = worm.segments[worm.segments.length - 1];
-    worm.segments.push({ x: last.x, y: last.y });
-  }
-  while (worm.segments.length > targetLen && worm.segments.length > 12) {
-    worm.segments.pop();
-  }
-
-  for (let i = 1; i < worm.segments.length; i++) {
-    const prev = worm.segments[i - 1];
-    const curr = worm.segments[i];
-    const a = Math.atan2(prev.y - curr.y, prev.x - curr.x);
-    curr.x = prev.x - Math.cos(a) * segSpacing;
-    curr.y = prev.y - Math.sin(a) * segSpacing;
+  // Fade out ground burrow hole once tail exits it
+  if (worm.spawnHole) {
+    const tail = worm.segments[worm.segments.length - 1];
+    const tailDistFromHole = Math.hypot(tail.x - worm.spawnHole.x, tail.y - worm.spawnHole.y);
+    if (tailDistFromHole > 8) {
+      worm.spawnHole.alpha = Math.max(0, worm.spawnHole.alpha - dt * 2.5);
+      if (worm.spawnHole.alpha <= 0) {
+        worm.spawnHole = null;
+      }
+    }
   }
 
   if (!mpConnected) {
@@ -208,6 +261,26 @@ function drawWorm(worm) {
   const len = worm.segments.length;
   if (len === 0) return;
 
+  // Draw ground burrow hole while worm emerges out of the ground
+  if (worm.spawnHole && worm.spawnHole.alpha > 0) {
+    gCtx.save();
+    gCtx.globalAlpha = worm.spawnHole.alpha;
+    gCtx.fillStyle = 'rgba(6, 18, 13, 0.45)';
+    gCtx.beginPath();
+    gCtx.arc(worm.spawnHole.x, worm.spawnHole.y, r + 9, 0, Math.PI * 2);
+    gCtx.fill();
+
+    gCtx.fillStyle = '#07140f';
+    gCtx.beginPath();
+    gCtx.arc(worm.spawnHole.x, worm.spawnHole.y, r + 3, 0, Math.PI * 2);
+    gCtx.fill();
+
+    gCtx.strokeStyle = 'rgba(118, 200, 147, 0.25)';
+    gCtx.lineWidth = 2;
+    gCtx.stroke();
+    gCtx.restore();
+  }
+
   if (worm.shieldTime > 0) {
     const blink = worm.shieldTime < 1.5 && Math.floor(worm.shieldTime * 10) % 2 === 0;
     gCtx.strokeStyle = blink ? '#facc15' : 'rgba(76, 201, 240, 0.75)';
@@ -225,7 +298,7 @@ function drawWorm(worm) {
     gCtx.fill();
   }
 
-  // Always draw head circle on top so eyes & mouth never clip under body segments
+  // Head circle drawn on top
   gCtx.fillStyle = worm.colors[0];
   gCtx.beginPath();
   gCtx.arc(worm.x, worm.y, r, 0, Math.PI * 2);

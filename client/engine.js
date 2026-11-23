@@ -433,7 +433,7 @@ function populateDenseFruits() {
   foods = [];
   foodsById.clear();
   respawnQueue = [];
-  const clusterCount = 1000;
+  const clusterCount = 800;
   for (let c = 0; c < clusterCount; c++) {
     const center = randomPointInSquareArena(160);
     const itemsInCluster = 2 + Math.floor(Math.random() * 3);
@@ -455,16 +455,16 @@ function calcWormRadius(score) {
   return Math.min(34, 13 + Math.pow(Math.max(10, score), 0.34) * 0.85);
 }
 
-function createWorm(x, y, name, skinColors, isPlayer = false, initialAngle = null) {
+function createWorm(x, y, name, skinColors, isPlayer = false, initialAngle = null, emergeFromGround = true) {
   const angle = (typeof initialAngle === 'number' && Number.isFinite(initialAngle))
     ? initialAngle
     : Math.random() * Math.PI * 2;
   const segs = [];
   for (let i = 0; i < 18; i++) {
-    segs.push({
-      x: x - Math.cos(angle) * i * 6.2,
-      y: y - Math.sin(angle) * i * 6.2
-    });
+    segs.push(emergeFromGround
+      ? { x, y }
+      : { x: x - Math.cos(angle) * i * 6.2, y: y - Math.sin(angle) * i * 6.2 }
+    );
   }
   return {
     x,
@@ -473,7 +473,9 @@ function createWorm(x, y, name, skinColors, isPlayer = false, initialAngle = nul
     score: 10,
     name,
     colors: skinColors,
+    path: [{ x, y }],
     segments: segs,
+    spawnHole: emergeFromGround ? { x, y, alpha: 1.0 } : null,
     isPlayer,
     shieldTime: isPlayer ? 4.0 : 2.0,
     mouthTimer: 0,
@@ -487,12 +489,15 @@ function spawnBot() {
   const pos = randomPointInSquareArena(300);
   const botNames = ['Արամ', 'Անի', 'Դավիթ', 'Max', 'Nika', 'Leo', 'Տիգրան', 'Alex', 'Մհեր', 'Kira'];
   const skin = SKINS[Math.floor(Math.random() * SKINS.length)];
-  const bot = createWorm(pos.x, pos.y, botNames[Math.floor(Math.random() * botNames.length)], skin.colors, false);
+  const bot = createWorm(pos.x, pos.y, botNames[Math.floor(Math.random() * botNames.length)], skin.colors, false, null, false);
   bot.score = 10 + Math.floor(Math.random() * 180);
   const targetSegs = calcTargetSegments(bot.score);
-  while (bot.segments.length < targetSegs) {
-    const last = bot.segments[bot.segments.length - 1];
-    bot.segments.push({ x: last.x, y: last.y });
+  bot.path = [];
+  for (let i = 0; i < targetSegs; i++) {
+    const pt = { x: bot.x - Math.cos(bot.angle) * i * 6.2, y: bot.y - Math.sin(bot.angle) * i * 6.2 };
+    bot.path.push(pt);
+    if (i >= bot.segments.length) bot.segments.push({ ...pt });
+    else bot.segments[i] = { ...pt };
   }
   return bot;
 }
@@ -535,7 +540,7 @@ function startGame() {
 
   const skin = SKINS.find(s => s.id === state.selectedSkin) || SKINS[0];
   const spawn = randomPointInSquareArena(500);
-  player = createWorm(spawn.x, spawn.y, state.name, skin.colors, true, startAngle);
+  player = createWorm(spawn.x, spawn.y, state.name, skin.colors, true, startAngle, true);
   pointerAngle = player.angle;
   isBoosting = false;
   currentZoom = 1.24;
