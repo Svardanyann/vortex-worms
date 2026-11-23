@@ -114,16 +114,16 @@ function initFoods() {
 }
 
 function calcRadius(score) {
-  return Math.min(34, 13 + Math.pow(Math.max(10, score), 0.34) * 0.85);
+  return Math.min(30, 10.5 + Math.pow(Math.max(0, score), 0.34) * 0.78);
 }
 
 function calcSegmentsCount(score) {
-  return Math.min(320, Math.floor(18 + Math.pow(Math.max(10, score), 0.56) * 1.45));
+  return Math.min(320, Math.floor(8 + Math.pow(Math.max(0, score), 0.56) * 1.45));
 }
 
 function updatePlayerSegmentsFromPath(p) {
   const targetSegs = calcSegmentsCount(p.score);
-  const spacing = 6.2;
+  const spacing = 5.2;
   if (!p.path || p.path.length === 0) {
     p.path = [{ x: p.x, y: p.y }];
   }
@@ -180,7 +180,7 @@ function createPlayer(id, name, colors, spawnHint = null) {
   }
 
   const segments = [];
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < 8; i++) {
     segments.push({ x: spawn.x, y: spawn.y });
   }
 
@@ -193,7 +193,7 @@ function createPlayer(id, name, colors, spawnHint = null) {
     angle,
     targetAngle: angle,
     boosting: false,
-    score: 10,
+    score: 0,
     kills: 0,
     shield: 4.0,
     path: [{ x: spawn.x, y: spawn.y }],
@@ -318,20 +318,20 @@ function stepSimulation(dt) {
     }
 
     const r = calcRadius(p.score);
-    const canBoost = p.boosting && p.score > 15;
-    const speed = canBoost ? 340 : 195;
+    const canBoost = p.boosting && p.score > 5;
+    const speed = canBoost ? 280 : 160;
 
     let diff = p.targetAngle - p.angle;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
 
-    const sizeFactor = Math.max(0.65, 13 / r);
-    const maxTurnRate = (canBoost ? 6.2 : 5.4) * sizeFactor;
-    const step = diff * Math.min(1, dt * 14);
+    const sizeFactor = Math.max(0.75, 10.5 / r);
+    const maxTurnRate = 9.0 * sizeFactor;
+    const step = diff * Math.min(1, dt * 22);
     p.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
 
     if (canBoost) {
-      p.score = Math.max(10, p.score - dt * 5);
+      p.score = Math.max(0, p.score - dt * 5);
     }
 
     p.x += Math.cos(p.angle) * speed * dt;

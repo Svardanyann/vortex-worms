@@ -474,11 +474,11 @@ function populateDenseFruits() {
 }
 
 function calcTargetSegments(score) {
-  return Math.min(340, Math.floor(18 + Math.pow(Math.max(10, score), 0.56) * 1.45));
+  return Math.min(340, Math.floor(8 + Math.pow(Math.max(0, score), 0.56) * 1.45));
 }
 
 function calcWormRadius(score) {
-  return Math.min(34, 13 + Math.pow(Math.max(10, score), 0.34) * 0.85);
+  return Math.min(30, 10.5 + Math.pow(Math.max(0, score), 0.34) * 0.78);
 }
 
 function createWorm(x, y, name, skinColors, isPlayer = false, initialAngle = null, emergeFromGround = true) {
@@ -486,17 +486,17 @@ function createWorm(x, y, name, skinColors, isPlayer = false, initialAngle = nul
     ? initialAngle
     : Math.random() * Math.PI * 2;
   const segs = [];
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < 8; i++) {
     segs.push(emergeFromGround
       ? { x, y }
-      : { x: x - Math.cos(angle) * i * 6.2, y: y - Math.sin(angle) * i * 6.2 }
+      : { x: x - Math.cos(angle) * i * 5.2, y: y - Math.sin(angle) * i * 5.2 }
     );
   }
   return {
     x,
     y,
     angle,
-    score: 10,
+    score: 0,
     name,
     colors: skinColors,
     path: [{ x, y }],
@@ -520,7 +520,7 @@ function spawnBot() {
   const targetSegs = calcTargetSegments(bot.score);
   bot.path = [];
   for (let i = 0; i < targetSegs; i++) {
-    const pt = { x: bot.x - Math.cos(bot.angle) * i * 6.2, y: bot.y - Math.sin(bot.angle) * i * 6.2 };
+    const pt = { x: bot.x - Math.cos(bot.angle) * i * 5.2, y: bot.y - Math.sin(bot.angle) * i * 5.2 };
     bot.path.push(pt);
     if (i >= bot.segments.length) bot.segments.push({ ...pt });
     else bot.segments[i] = { ...pt };
@@ -602,6 +602,12 @@ function startGame() {
   document.getElementById('gameCoinsVal').textContent = state.coins;
   document.getElementById('shieldNotice').style.display = 'none';
 
+  // Hide redundant top score HUD (score is shown in leaderboard on the right)
+  const scoreValEl = document.getElementById('scoreVal');
+  if (scoreValEl && scoreValEl.parentElement) {
+    scoreValEl.parentElement.style.display = 'none';
+  }
+
   startBgMusic();
 
   lastFrameTime = performance.now();
@@ -650,7 +656,6 @@ gameCanvas.addEventListener('pointerdown', (e) => {
     });
   }
 
-  // Spawn floating joystick if no finger is currently controlling it
   if (joyPointerId === null) {
     joyPointerId = e.pointerId;
     joyActive = true;
@@ -692,7 +697,6 @@ window.addEventListener('pointermove', (e) => {
     return;
   }
 
-  // Desktop mouse steering when no joystick drag is active
   if (e.pointerType === 'mouse' && joyPointerId === null && inGame && player) {
     const cx = gameCanvas.width / 2;
     const cy = gameCanvas.height / 2;

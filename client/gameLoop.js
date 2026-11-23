@@ -24,7 +24,7 @@ window.addEventListener('resize', () => {
 // Place body segments along the exact ground path of the head (zero sideways drift)
 function updateSegmentsFromPath(worm) {
   const targetLen = calcTargetSegments(worm.score);
-  const segSpacing = 6.2;
+  const segSpacing = 5.2;
   if (!worm.path || worm.path.length === 0) {
     worm.path = [{ x: worm.x, y: worm.y }];
   }
@@ -85,8 +85,8 @@ function updateWorm(worm, dt) {
 
   const rHead = calcWormRadius(worm.score);
   const wantsBoost = worm.isPlayer ? isBoosting : false;
-  const canBoost = wantsBoost && (worm.score > 15 || worm.effects.freeBoost > 0);
-  const speed = canBoost ? 340 : 195;
+  const canBoost = wantsBoost && (worm.score > 5 || worm.effects.freeBoost > 0);
+  const speed = canBoost ? 280 : 160;
 
   let turnDiff = 0;
   if (worm.isPlayer) {
@@ -94,9 +94,9 @@ function updateWorm(worm, dt) {
     while (turnDiff > Math.PI) turnDiff -= Math.PI * 2;
     while (turnDiff < -Math.PI) turnDiff += Math.PI * 2;
 
-    const sizeFactor = Math.max(0.65, 13 / rHead);
-    const maxTurnRate = (canBoost ? 6.2 : 5.4) * sizeFactor;
-    const step = turnDiff * Math.min(1, dt * 14);
+    const sizeFactor = Math.max(0.75, 10.5 / rHead);
+    const maxTurnRate = 9.0 * sizeFactor;
+    const step = turnDiff * Math.min(1, dt * 22);
     worm.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
     sendMultiplayerInput();
   } else {
@@ -113,13 +113,13 @@ function updateWorm(worm, dt) {
     turnDiff = worm.aiTargetAngle - worm.angle;
     while (turnDiff > Math.PI) turnDiff -= Math.PI * 2;
     while (turnDiff < -Math.PI) turnDiff += Math.PI * 2;
-    const maxTurnRate = 4.2;
-    const step = turnDiff * Math.min(1, dt * 10);
+    const maxTurnRate = 5.5;
+    const step = turnDiff * Math.min(1, dt * 12);
     worm.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
   }
 
   if (!mpConnected && canBoost && worm.effects.freeBoost <= 0) {
-    worm.score = Math.max(10, worm.score - dt * 5);
+    worm.score = Math.max(0, worm.score - dt * 5);
   }
 
   worm.x += Math.cos(worm.angle) * speed * dt;
@@ -342,10 +342,21 @@ function drawWorm(worm) {
 }
 
 function drawMinimap() {
-  const size = 92;
-  const pad = 12;
-  const x0 = pad;
-  const y0 = gameCanvas.height - pad - size;
+  let x0 = 12;
+  let y0 = 56;
+  let size = 90;
+
+  const coinsEl = document.getElementById('gameCoinsVal');
+  const coinsPill = coinsEl ? coinsEl.parentElement : null;
+  if (coinsPill) {
+    const rect = coinsPill.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      x0 = Math.round(rect.left);
+      y0 = Math.round(rect.bottom + 8);
+      size = Math.max(76, Math.round(rect.width));
+    }
+  }
+
   const cx = x0 + size / 2;
   const cy = y0 + size / 2;
 
@@ -390,7 +401,6 @@ function drawFloatingJoystick() {
 
   gCtx.save();
 
-  // Outer joystick ring
   gCtx.fillStyle = 'rgba(12, 24, 38, 0.28)';
   gCtx.strokeStyle = isBoosting ? 'rgba(250, 204, 21, 0.55)' : 'rgba(255, 255, 255, 0.34)';
   gCtx.lineWidth = 2;
@@ -399,7 +409,6 @@ function drawFloatingJoystick() {
   gCtx.fill();
   gCtx.stroke();
 
-  // Guide line from center to thumb
   gCtx.strokeStyle = isBoosting ? 'rgba(250, 204, 21, 0.35)' : 'rgba(255, 255, 255, 0.22)';
   gCtx.lineWidth = 2;
   gCtx.beginPath();
@@ -407,7 +416,6 @@ function drawFloatingJoystick() {
   gCtx.lineTo(joyKnobX, joyKnobY);
   gCtx.stroke();
 
-  // Movable inner thumb knob
   gCtx.fillStyle = isBoosting ? 'rgba(250, 204, 21, 0.78)' : 'rgba(255, 255, 255, 0.65)';
   gCtx.beginPath();
   gCtx.arc(joyKnobX, joyKnobY, 17, 0, Math.PI * 2);
@@ -451,7 +459,7 @@ function gameLoop(now) {
     if (!inGame) return;
   }
 
-  const baseZoom = Math.max(0.72, 1.24 - Math.pow(Math.max(10, player.score), 0.34) * 0.014);
+  const baseZoom = Math.max(0.72, 1.24 - Math.pow(Math.max(0, player.score), 0.34) * 0.014);
   const targetZoom = player.effects.zoom > 0 ? baseZoom * 0.72 : baseZoom;
   currentZoom += (targetZoom - currentZoom) * Math.min(1, dt * 2.4);
 
