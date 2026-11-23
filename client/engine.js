@@ -1,6 +1,7 @@
 // ================= MAIN GAME ENGINE =================
 const gameCanvas = document.getElementById('gameCanvas');
 const gCtx = gameCanvas.getContext('2d');
+gameCanvas.style.touchAction = 'none';
 
 const ARENA_HALF = 4500;
 
@@ -98,6 +99,23 @@ let lastFrameTime = 0;
 let currentZoom = 1.24;
 let lastStartAt = 0;
 
+// Floating Joystick & Double-Tap Boost State
+const JOY_MAX_RADIUS = 46;
+const DOUBLE_TAP_MS = 320;
+const DOUBLE_TAP_DIST = 80;
+
+let joyActive = false;
+let joyPointerId = null;
+let joyOriginX = 0;
+let joyOriginY = 0;
+let joyKnobX = 0;
+let joyKnobY = 0;
+
+let boostPointerId = null;
+let spaceBoosting = false;
+let pendingTaps = new Map();
+let lastCompletedTap = { time: 0, x: 0, y: 0 };
+
 // ================= MULTIPLAYER WEBSOCKET STATE =================
 const PROD_WS_URL = 'wss://vortex-worms.onrender.com';
 let wsSocket = null;
@@ -107,6 +125,8 @@ let mpPlayerId = null;
 let mpServerPos = null;
 let mpAwaitingJoinAck = false;
 let lastInputSentAt = 0;
+let lastSentAngle = null;
+let lastSentBoost = null;
 let offlineTimer = null;
 
 function isCapacitorEnv() {
@@ -171,8 +191,12 @@ function addFoodTuple(tup) {
 function sendMultiplayerInput(force = false) {
   if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN || !inGame || !player || mpAwaitingJoinAck) return;
   const now = performance.now();
-  if (!force && now - lastInputSentAt < 33) return;
+  const angleChanged = lastSentAngle === null || Math.abs(pointerAngle - lastSentAngle) > 0.015;
+  const boostChanged = lastSentBoost !== Boolean(isBoosting);
+  if (!force && !boostChanged && (!angleChanged || now - lastInputSentAt < 28)) return;
   lastInputSentAt = now;
+  lastSentAngle = pointerAngle;
+  lastSentBoost = Boolean(isBoosting);
   wsSocket.send(JSON.stringify({
     type: 'input',
     angle: Number(pointerAngle.toFixed(4)),
@@ -233,6 +257,8 @@ function ensureSocketInitialized() {
       mpPlayerId = msg.id;
       mpServerPos = null;
       mpAwaitingJoinAck = false;
+      lastSentAngle = null;
+      lastSentBoost = null;
       if (Array.isArray(msg.foods)) {
         rebuildFoodList(msg.foods);
       }
@@ -513,12 +539,31 @@ function showKillToast() {
   }, 2250);
 }
 
+function resetTouchControls() {
+  joyActive = false;
+  joyPointerId = null;
+  boostPointerId = null;
+  spaceBoosting = false;
+  isBoosting = false;
+  pendingTaps.clear();
+  lastCompletedTap = { time: 0, x: 0, y: 0 };
+}
+
+function updateBoostState() {
+  const nextBoost = spaceBoosting || boostPointerId !== null;
+  if (isBoosting !== nextBoost) {
+    isBoosting = nextBoost;
+    sendMultiplayerInput(true);
+  }
+}
+
 function startGame() {
   const now = performance.now();
   if (now - lastStartAt < 400) return;
   lastStartAt = now;
 
   inGame = true;
+  resetTouchControls();
   document.body.classList.add('in-game');
   lockLandscapeOrientation();
 
@@ -542,7 +587,6 @@ function startGame() {
   const spawn = randomPointInSquareArena(500);
   player = createWorm(spawn.x, spawn.y, state.name, skin.colors, true, startAngle, true);
   pointerAngle = player.angle;
-  isBoosting = false;
   currentZoom = 1.24;
   mpServerPos = null;
   mpOfflineFallback = false;
@@ -567,6 +611,7 @@ function startGame() {
 
 function exitToLobby() {
   inGame = false;
+  resetTouchControls();
   disconnectMultiplayer();
   document.body.classList.remove('in-game');
   unlockOrientation();
@@ -578,30 +623,125 @@ function exitToLobby() {
   updateUI();
 }
 
-// Responsive Steering Input Handlers
-function updatePointerAngleFromEvent(e) {
-  lastCursorX = e.clientX;
-  lastCursorY = e.clientY;
-  if (!inGame || !player) return;
-  const cx = gameCanvas.width / 2;
-  const cy = gameCanvas.height / 2;
-  pointerAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
-  sendMultiplayerInput();
-}
+// Remove old Boost button from screen
+const boostBtn = document.getElementById('boostBtn');
+if (boostBtn) boostBtn.remove();
 
-window.addEventListener('pointermove', updatePointerAngleFromEvent);
+// Full-Screen Floating Joystick + Double-Tap & Hold Boost
 gameCanvas.addEventListener('pointerdown', (e) => {
-  updatePointerAngleFromEvent(e);
-  sendMultiplayerInput(true);
+  if (!inGame || !player) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+  const now = performance.now();
+  const isDoubleTap =
+    (now - lastCompletedTap.time) <= DOUBLE_TAP_MS &&
+    Math.hypot(e.clientX - lastCompletedTap.x, e.clientY - lastCompletedTap.y) <= DOUBLE_TAP_DIST;
+
+  if (isDoubleTap) {
+    lastCompletedTap.time = 0;
+    boostPointerId = e.pointerId;
+    updateBoostState();
+  } else {
+    pendingTaps.set(e.pointerId, {
+      downTime: now,
+      downX: e.clientX,
+      downY: e.clientY,
+      moved: false
+    });
+  }
+
+  // Spawn floating joystick if no finger is currently controlling it
+  if (joyPointerId === null) {
+    joyPointerId = e.pointerId;
+    joyActive = true;
+    joyOriginX = e.clientX;
+    joyOriginY = e.clientY;
+    joyKnobX = e.clientX;
+    joyKnobY = e.clientY;
+  }
 });
 
-const boostBtn = document.getElementById('boostBtn');
-boostBtn.addEventListener('pointerdown', (e) => { e.stopPropagation(); isBoosting = true; sendMultiplayerInput(true); });
-boostBtn.addEventListener('pointerup', (e) => { e.stopPropagation(); isBoosting = false; sendMultiplayerInput(true); });
-boostBtn.addEventListener('pointercancel', (e) => { e.stopPropagation(); isBoosting = false; sendMultiplayerInput(true); });
-boostBtn.addEventListener('pointerleave', () => { isBoosting = false; sendMultiplayerInput(true); });
-window.addEventListener('keydown', (e) => { if (e.code === 'Space') { isBoosting = true; sendMultiplayerInput(true); } });
-window.addEventListener('keyup', (e) => { if (e.code === 'Space') { isBoosting = false; sendMultiplayerInput(true); } });
+window.addEventListener('pointermove', (e) => {
+  lastCursorX = e.clientX;
+  lastCursorY = e.clientY;
+
+  if (pendingTaps.has(e.pointerId)) {
+    const tap = pendingTaps.get(e.pointerId);
+    if (Math.hypot(e.clientX - tap.downX, e.clientY - tap.downY) > 28) {
+      tap.moved = true;
+    }
+  }
+
+  if (e.pointerId === joyPointerId) {
+    const dx = e.clientX - joyOriginX;
+    const dy = e.clientY - joyOriginY;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist > JOY_MAX_RADIUS) {
+      joyKnobX = joyOriginX + (dx / dist) * JOY_MAX_RADIUS;
+      joyKnobY = joyOriginY + (dy / dist) * JOY_MAX_RADIUS;
+    } else {
+      joyKnobX = e.clientX;
+      joyKnobY = e.clientY;
+    }
+
+    if (dist >= 6 && inGame && player) {
+      pointerAngle = Math.atan2(dy, dx);
+      sendMultiplayerInput(false);
+    }
+    return;
+  }
+
+  // Desktop mouse steering when no joystick drag is active
+  if (e.pointerType === 'mouse' && joyPointerId === null && inGame && player) {
+    const cx = gameCanvas.width / 2;
+    const cy = gameCanvas.height / 2;
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+    if (dx * dx + dy * dy >= 36) {
+      pointerAngle = Math.atan2(dy, dx);
+      sendMultiplayerInput(false);
+    }
+  }
+});
+
+function handlePointerRelease(e) {
+  const now = performance.now();
+
+  if (pendingTaps.has(e.pointerId)) {
+    const tap = pendingTaps.get(e.pointerId);
+    pendingTaps.delete(e.pointerId);
+    if (e.type === 'pointerup' && !tap.moved && (now - tap.downTime) <= 260) {
+      lastCompletedTap = { time: now, x: e.clientX, y: e.clientY };
+    }
+  }
+
+  if (e.pointerId === joyPointerId) {
+    joyPointerId = null;
+    joyActive = false;
+  }
+
+  if (e.pointerId === boostPointerId) {
+    boostPointerId = null;
+    updateBoostState();
+  }
+}
+
+window.addEventListener('pointerup', handlePointerRelease);
+window.addEventListener('pointercancel', handlePointerRelease);
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') {
+    spaceBoosting = true;
+    updateBoostState();
+  }
+});
+window.addEventListener('keyup', (e) => {
+  if (e.code === 'Space') {
+    spaceBoosting = false;
+    updateBoostState();
+  }
+});
 
 document.getElementById('startGameBtn').addEventListener('click', startGame);
 document.getElementById('playAgainBtn').addEventListener('click', startGame);
@@ -635,6 +775,7 @@ function killWorm(worm, allWorms, killer = null) {
   if (worm.isPlayer) {
     playTone(150, 'sawtooth', 0.35, 0.12);
     inGame = false;
+    resetTouchControls();
     stopBgMusic();
     const earnedCoins = Math.max(5, Math.floor(player.score / 25));
     const earnedXp = Math.max(10, Math.floor(player.score / 15));

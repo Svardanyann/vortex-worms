@@ -21,7 +21,7 @@ window.addEventListener('resize', () => {
   }
 });
 
-// Place body segments along the exact recorded path of the head (zero sideways drift)
+// Place body segments along the exact ground path of the head (zero sideways drift)
 function updateSegmentsFromPath(worm) {
   const targetLen = calcTargetSegments(worm.score);
   const segSpacing = 6.2;
@@ -52,7 +52,6 @@ function updateSegmentsFromPath(worm) {
       segDistAcc += d;
       pathIdx++;
     }
-    // Segments that haven't exited the ground burrow yet remain inside the hole
     if (newSegs.length <= s) {
       const tailOrigin = worm.path[worm.path.length - 1];
       newSegs.push({ x: tailOrigin.x, y: tailOrigin.y });
@@ -84,13 +83,20 @@ function updateWorm(worm, dt) {
     if (worm.effects[k] > 0) worm.effects[k] = Math.max(0, worm.effects[k] - dt);
   }
 
-  if (worm.isPlayer) {
-    let diff = pointerAngle - worm.angle;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
+  const rHead = calcWormRadius(worm.score);
+  const wantsBoost = worm.isPlayer ? isBoosting : false;
+  const canBoost = wantsBoost && (worm.score > 15 || worm.effects.freeBoost > 0);
+  const speed = canBoost ? 340 : 195;
 
-    const maxTurnRate = 4.3;
-    const step = diff * Math.min(1, dt * 12);
+  let turnDiff = 0;
+  if (worm.isPlayer) {
+    turnDiff = pointerAngle - worm.angle;
+    while (turnDiff > Math.PI) turnDiff -= Math.PI * 2;
+    while (turnDiff < -Math.PI) turnDiff += Math.PI * 2;
+
+    const sizeFactor = Math.max(0.65, 13 / rHead);
+    const maxTurnRate = (canBoost ? 6.2 : 5.4) * sizeFactor;
+    const step = turnDiff * Math.min(1, dt * 14);
     worm.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
     sendMultiplayerInput();
   } else {
@@ -104,17 +110,13 @@ function updateWorm(worm, dt) {
         worm.y > ARENA_HALF - wallMargin || worm.y < -ARENA_HALF + wallMargin) {
       worm.aiTargetAngle = Math.atan2(-worm.y, -worm.x);
     }
-    let diff = worm.aiTargetAngle - worm.angle;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    const maxTurnRate = 3.6;
-    const step = diff * Math.min(1, dt * 8);
+    turnDiff = worm.aiTargetAngle - worm.angle;
+    while (turnDiff > Math.PI) turnDiff -= Math.PI * 2;
+    while (turnDiff < -Math.PI) turnDiff += Math.PI * 2;
+    const maxTurnRate = 4.2;
+    const step = turnDiff * Math.min(1, dt * 10);
     worm.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
   }
-
-  const wantsBoost = worm.isPlayer ? isBoosting : false;
-  const canBoost = wantsBoost && (worm.score > 15 || worm.effects.freeBoost > 0);
-  const speed = canBoost ? 340 : 195;
 
   if (!mpConnected && canBoost && worm.effects.freeBoost <= 0) {
     worm.score = Math.max(10, worm.score - dt * 5);
@@ -123,52 +125,33 @@ function updateWorm(worm, dt) {
   worm.x += Math.cos(worm.angle) * speed * dt;
   worm.y += Math.sin(worm.angle) * speed * dt;
 
+  // Reconcile only when moving straight or on large lag spikes; never shift recorded path sideways
+  if (mpConnected && worm.isPlayer && mpServerPos && !mpAwaitingJoinAck) {
+    const errX = mpServerPos.x - worm.x;
+    const errY = mpServerPos.y - worm.y;
+    const errDist = Math.hypot(errX, errY);
+
+    if (errDist > 260) {
+      worm.x = mpServerPos.x;
+      worm.y = mpServerPos.y;
+      worm.path = [{ x: worm.x, y: worm.y }];
+    } else if (errDist > 20 && Math.abs(turnDiff) < 0.14) {
+      const blend = Math.min(0.18, dt * 2.5);
+      worm.x += errX * blend;
+      worm.y += errY * blend;
+    }
+  }
+
   if (!worm.path || worm.path.length === 0) {
     worm.path = [{ x: worm.x, y: worm.y }];
   }
-  if (Math.hypot(worm.x - worm.path[0].x, worm.y - worm.path[0].y) >= 1.5) {
+  if (Math.hypot(worm.x - worm.path[0].x, worm.y - worm.path[0].y) >= 1.2) {
     worm.path.unshift({ x: worm.x, y: worm.y });
   } else {
     worm.path[0].x = worm.x;
     worm.path[0].y = worm.y;
   }
 
-  // Smooth server reconciliation shifting entire recorded path together
-  if (mpConnected && worm.isPlayer && mpServerPos && !mpAwaitingJoinAck) {
-    const srvSpeed = (mpServerPos.boosting && worm.score > 15) ? 340 : 195;
-    mpServerPos.x += Math.cos(mpServerPos.angle) * srvSpeed * dt;
-    mpServerPos.y += Math.sin(mpServerPos.angle) * srvSpeed * dt;
-
-    const errX = mpServerPos.x - worm.x;
-    const errY = mpServerPos.y - worm.y;
-    const errDist = Math.hypot(errX, errY);
-
-    let corrX = 0;
-    let corrY = 0;
-    if (errDist > 220) {
-      corrX = errX;
-      corrY = errY;
-    } else if (errDist > 1.5) {
-      const blend = Math.min(1, dt * 6);
-      corrX = errX * blend;
-      corrY = errY * blend;
-    }
-
-    if (corrX !== 0 || corrY !== 0) {
-      worm.x += corrX;
-      worm.y += corrY;
-      for (let i = 0; i < worm.path.length; i++) {
-        worm.path[i].x += corrX;
-        worm.path[i].y += corrY;
-      }
-      if (worm.spawnHole) {
-        worm.spawnHole.x += corrX;
-        worm.spawnHole.y += corrY;
-      }
-    }
-  }
-
-  const rHead = calcWormRadius(worm.score);
   const maxCoord = ARENA_HALF - rHead;
 
   if (Math.abs(worm.x) >= maxCoord || Math.abs(worm.y) >= maxCoord) {
@@ -261,7 +244,6 @@ function drawWorm(worm) {
   const len = worm.segments.length;
   if (len === 0) return;
 
-  // Draw ground burrow hole while worm emerges out of the ground
   if (worm.spawnHole && worm.spawnHole.alpha > 0) {
     gCtx.save();
     gCtx.globalAlpha = worm.spawnHole.alpha;
@@ -298,7 +280,6 @@ function drawWorm(worm) {
     gCtx.fill();
   }
 
-  // Head circle drawn on top
   gCtx.fillStyle = worm.colors[0];
   gCtx.beginPath();
   gCtx.arc(worm.x, worm.y, r, 0, Math.PI * 2);
@@ -404,6 +385,37 @@ function drawMinimap() {
   gCtx.restore();
 }
 
+function drawFloatingJoystick() {
+  if (!joyActive) return;
+
+  gCtx.save();
+
+  // Outer joystick ring
+  gCtx.fillStyle = 'rgba(12, 24, 38, 0.28)';
+  gCtx.strokeStyle = isBoosting ? 'rgba(250, 204, 21, 0.55)' : 'rgba(255, 255, 255, 0.34)';
+  gCtx.lineWidth = 2;
+  gCtx.beginPath();
+  gCtx.arc(joyOriginX, joyOriginY, JOY_MAX_RADIUS, 0, Math.PI * 2);
+  gCtx.fill();
+  gCtx.stroke();
+
+  // Guide line from center to thumb
+  gCtx.strokeStyle = isBoosting ? 'rgba(250, 204, 21, 0.35)' : 'rgba(255, 255, 255, 0.22)';
+  gCtx.lineWidth = 2;
+  gCtx.beginPath();
+  gCtx.moveTo(joyOriginX, joyOriginY);
+  gCtx.lineTo(joyKnobX, joyKnobY);
+  gCtx.stroke();
+
+  // Movable inner thumb knob
+  gCtx.fillStyle = isBoosting ? 'rgba(250, 204, 21, 0.78)' : 'rgba(255, 255, 255, 0.65)';
+  gCtx.beginPath();
+  gCtx.arc(joyKnobX, joyKnobY, 17, 0, Math.PI * 2);
+  gCtx.fill();
+
+  gCtx.restore();
+}
+
 function gameLoop(now) {
   if (!inGame || !player) return;
   const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
@@ -498,6 +510,7 @@ function gameLoop(now) {
   gCtx.restore();
 
   drawMinimap();
+  drawFloatingJoystick();
   document.getElementById('scoreVal').textContent = Math.floor(player.score);
 
   const rivals = mpConnected ? remoteWorms : bots;

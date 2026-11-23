@@ -179,7 +179,6 @@ function createPlayer(id, name, colors, spawnHint = null) {
     angle = spawnHint.angle;
   }
 
-  // Start all segments tucked inside the ground burrow at spawn point
   const segments = [];
   for (let i = 0; i < 18; i++) {
     segments.push({ x: spawn.x, y: spawn.y });
@@ -318,16 +317,19 @@ function stepSimulation(dt) {
       p.shield = Math.max(0, p.shield - dt);
     }
 
+    const r = calcRadius(p.score);
+    const canBoost = p.boosting && p.score > 15;
+    const speed = canBoost ? 340 : 195;
+
     let diff = p.targetAngle - p.angle;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
 
-    const maxTurnRate = 4.3;
-    const step = diff * Math.min(1, dt * 12);
+    const sizeFactor = Math.max(0.65, 13 / r);
+    const maxTurnRate = (canBoost ? 6.2 : 5.4) * sizeFactor;
+    const step = diff * Math.min(1, dt * 14);
     p.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
 
-    const canBoost = p.boosting && p.score > 15;
-    const speed = canBoost ? 340 : 195;
     if (canBoost) {
       p.score = Math.max(10, p.score - dt * 5);
     }
@@ -335,14 +337,13 @@ function stepSimulation(dt) {
     p.x += Math.cos(p.angle) * speed * dt;
     p.y += Math.sin(p.angle) * speed * dt;
 
-    if (Math.hypot(p.x - p.path[0].x, p.y - p.path[0].y) >= 1.5) {
+    if (Math.hypot(p.x - p.path[0].x, p.y - p.path[0].y) >= 1.2) {
       p.path.unshift({ x: p.x, y: p.y });
     } else {
       p.path[0].x = p.x;
       p.path[0].y = p.y;
     }
 
-    const r = calcRadius(p.score);
     if (Math.abs(p.x) >= ARENA_HALF - r || Math.abs(p.y) >= ARENA_HALF - r) {
       const ws = socketsById.get(p.id);
       killPlayer(p, null);
