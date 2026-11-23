@@ -121,11 +121,28 @@ function calcSegmentsCount(score) {
   return Math.min(320, Math.floor(18 + Math.pow(Math.max(10, score), 0.56) * 1.45));
 }
 
-function createPlayer(id, name, colors) {
-  const spawn = randomArenaPos(500);
+function createPlayer(id, name, colors, spawnHint = null) {
+  const limit = ARENA_HALF - 500;
+  let spawn = randomArenaPos(500);
+  let angle = Math.random() * Math.PI * 2;
+
+  if (spawnHint && typeof spawnHint.x === 'number' && typeof spawnHint.y === 'number' &&
+      Number.isFinite(spawnHint.x) && Number.isFinite(spawnHint.y)) {
+    spawn = {
+      x: Math.max(-limit, Math.min(limit, spawnHint.x)),
+      y: Math.max(-limit, Math.min(limit, spawnHint.y))
+    };
+  }
+  if (spawnHint && typeof spawnHint.angle === 'number' && Number.isFinite(spawnHint.angle)) {
+    angle = spawnHint.angle;
+  }
+
   const segments = [];
   for (let i = 0; i < 18; i++) {
-    segments.push({ x: spawn.x - i * 6, y: spawn.y });
+    segments.push({
+      x: spawn.x - Math.cos(angle) * i * 6,
+      y: spawn.y - Math.sin(angle) * i * 6
+    });
   }
   return {
     id,
@@ -133,8 +150,8 @@ function createPlayer(id, name, colors) {
     colors: Array.isArray(colors) && colors.length >= 2 ? colors : ['#ffffff', '#38bdf8'],
     x: spawn.x,
     y: spawn.y,
-    angle: Math.random() * Math.PI * 2,
-    targetAngle: 0,
+    angle,
+    targetAngle: angle,
     boosting: false,
     score: 10,
     kills: 0,
@@ -148,9 +165,9 @@ function spawnOrRespawnSocketPlayer(ws, id, msg, existingPlayer) {
   const fresh = createPlayer(
     id,
     msg.name || (existingPlayer && existingPlayer.name),
-    msg.colors || (existingPlayer && existingPlayer.colors)
+    msg.colors || (existingPlayer && existingPlayer.colors),
+    { x: msg.x, y: msg.y, angle: msg.angle }
   );
-  fresh.targetAngle = fresh.angle;
   players.set(id, fresh);
   socketsById.set(id, ws);
   ws.send(JSON.stringify({

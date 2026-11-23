@@ -16,7 +16,9 @@ window.addEventListener('resize', () => {
   if (!inGame) return;
   gameCanvas.width = window.innerWidth;
   gameCanvas.height = window.innerHeight;
-  arenaPattern = gCtx.createPattern(arenaTile, 'repeat');
+  if (!arenaPattern) {
+    arenaPattern = gCtx.createPattern(arenaTile, 'repeat');
+  }
 });
 
 function updateWorm(worm, dt) {
@@ -72,7 +74,7 @@ function updateWorm(worm, dt) {
   worm.x += Math.cos(worm.angle) * speed * dt;
   worm.y += Math.sin(worm.angle) * speed * dt;
 
-  // Predictive dead-reckoning reconciliation (eliminates start & mid-game stutter)
+  // Predictive dead-reckoning reconciliation
   if (mpConnected && worm.isPlayer && mpServerPos) {
     const elapsed = Math.min(0.12, Math.max(0, (performance.now() - mpServerPos.at) / 1000));
     const srvSpeed = (mpServerPos.boosting && worm.score > 15) ? 340 : 195;
@@ -298,7 +300,7 @@ function drawMinimap() {
     gCtx.fill();
   });
 
-  if (player && mpReadyToRender) {
+  if (player) {
     gCtx.fillStyle = '#80ed99';
     gCtx.beginPath();
     gCtx.arc(cx + player.x * scale, cy + player.y * scale, 3.5, 0, Math.PI * 2);
@@ -311,14 +313,6 @@ function gameLoop(now) {
   if (!inGame || !player) return;
   const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
   lastFrameTime = now;
-
-  // Wait until first authoritative server spawn packet arrives before moving/jumping
-  if (!mpReadyToRender) {
-    gCtx.fillStyle = '#14362b';
-    gCtx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
-    gameAnimId = requestAnimationFrame(gameLoop);
-    return;
-  }
 
   if (!mpConnected) {
     for (let i = respawnQueue.length - 1; i >= 0; i--) {

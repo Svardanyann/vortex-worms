@@ -33,7 +33,7 @@ const FRUITS = [
   { emoji: '🍉', val: 30, r: 15 }
 ];
 
-// Pre-render Static Illustrated Arena Tile
+// Pre-render Static Illustrated Arena Tile once
 const arenaTile = document.createElement('canvas');
 arenaTile.width = 512;
 arenaTile.height = 512;
@@ -79,7 +79,7 @@ const tCtx = arenaTile.getContext('2d');
   });
 })();
 
-let arenaPattern = null;
+let arenaPattern = gCtx.createPattern(arenaTile, 'repeat');
 
 let player = null;
 let bots = [];
@@ -98,13 +98,12 @@ let lastStartAt = 0;
 
 // ================= MULTIPLAYER WEBSOCKET STATE =================
 const PROD_WS_URL = 'wss://vortex-worms.onrender.com';
-const PROD_HTTP_URL = 'https://vortex-worms.onrender.com';
 let wsSocket = null;
 let mpConnected = false;
 let mpOfflineFallback = false;
 let mpPlayerId = null;
 let mpServerPos = null;
-let mpReadyToRender = false;
+let mpAwaitingJoinAck = false;
 let lastInputSentAt = 0;
 let offlineTimer = null;
 
@@ -126,14 +125,6 @@ function getWsUrl() {
   }
   return PROD_WS_URL;
 }
-
-// Wake up Render server in background while user is in lobby
-(function prewarmServer() {
-  try {
-    const pingUrl = isCapacitorEnv() ? `${PROD_HTTP_URL}/?ping=1` : '/?ping=1';
-    fetch(pingUrl, { cache: 'no-store' }).catch(() => {});
-  } catch (e) {}
-})();
 
 function unpackFoodTuple(tuple) {
   const [id, x, y, t] = tuple;
@@ -176,7 +167,7 @@ function addFoodTuple(tup) {
 }
 
 function sendMultiplayerInput(force = false) {
-  if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN || !inGame || !player || !mpReadyToRender) return;
+  if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN || !inGame || !player || mpAwaitingJoinAck) return;
   const now = performance.now();
   if (!force && now - lastInputSentAt < 33) return;
   lastInputSentAt = now;
@@ -190,11 +181,165 @@ function sendMultiplayerInput(force = false) {
 function activateOfflineMode() {
   if (mpConnected || mpOfflineFallback) return;
   mpOfflineFallback = true;
-  mpReadyToRender = true;
+  mpAwaitingJoinAck = false;
   populateDenseFruits();
   bots = [];
   for (let i = 0; i < 24; i++) bots.push(spawnBot());
 }
+
+function ensureSocketInitialized() {
+  if (wsSocket && (wsSocket.readyState === WebSocket.OPEN || wsSocket.readyState === WebSocket.CONNECTING)) {
+    return wsSocket;
+  }
+
+  const socket = new WebSocket(getWsUrl());
+  wsSocket = socket;
+
+  socket.addEventListener('open', () => {
+    if (wsSocket !== socket) return;
+    if (offlineTimer) {
+      clearTimeout(offlineTimer);
+      offlineTimer = null;
+    }
+    mpConnected = true;
+    mpOfflineFallback = false;
+
+    // If user already clicked Start while socket was connecting, join immediately
+    if (inGame && player) {
+      bots = [];
+      mpAwaitingJoinAck = true;
+      socket.send(JSON.stringify({
+        type: 'join',
+        name: state.name,
+        colors: player.colors,
+        x: Math.round(player.x),
+        y: Math.round(player.y),
+        angle: Number(player.angle.toFixed(4))
+      }));
+    }
+  });
+
+  socket.addEventListener('message', (event) => {
+    if (wsSocket !== socket) return;
+    let msg;
+    try {
+      msg = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+
+    if (msg.type === 'joined') {
+      mpPlayerId = msg.id;
+      mpServerPos = null;
+      mpAwaitingJoinAck = false;
+      if (Array.isArray(msg.foods)) {
+        rebuildFoodList(msg.foods);
+      }
+    } else if (msg.type === 'state') {
+      if (!inGame || !player || mpAwaitingJoinAck) return;
+
+      if (Array.isArray(msg.foodsFull)) {
+        rebuildFoodList(msg.foodsFull);
+      } else {
+        if (Array.isArray(msg.eaten)) {
+          for (let i = 0; i < msg.eaten.length; i++) {
+            removeFoodById(msg.eaten[i]);
+          }
+        }
+        if (Array.isArray(msg.spawned)) {
+          for (let i = 0; i < msg.spawned.length; i++) {
+            addFoodTuple(msg.spawned[i]);
+          }
+        }
+      }
+
+      if (Array.isArray(msg.players)) {
+        const prevRemoteMap = new Map(remoteWorms.map(w => [w.id, w]));
+        const others = [];
+
+        for (const sp of msg.players) {
+          if (sp.id === mpPlayerId) {
+            mpServerPos = {
+              x: sp.x,
+              y: sp.y,
+              angle: sp.angle,
+              boosting: Boolean(isBoosting),
+              at: performance.now()
+            };
+
+            if (sp.score > player.score + 1) {
+              const diff = Math.round(sp.score - player.score);
+              player.mouthTimer = 0.28;
+              playTone(540, 'sine', 0.05, 0.04);
+              floatingTexts.push({
+                x: player.x,
+                y: player.y - 16,
+                text: `+${diff}`,
+                alpha: 1.0,
+                color: diff >= 20 ? '#ffd166' : '#80ed99'
+              });
+            }
+            player.score = sp.score;
+            player.shieldTime = sp.shield || 0;
+          } else {
+            const prev = prevRemoteMap.get(sp.id);
+            let mouthTimer = prev ? (prev.mouthTimer || 0) : 0;
+            if (prev && sp.score > prev.score + 1) {
+              mouthTimer = 0.28;
+            }
+            others.push({
+              id: sp.id,
+              name: sp.name,
+              colors: sp.colors,
+              x: prev ? prev.x : sp.x,
+              y: prev ? prev.y : sp.y,
+              targetX: sp.x,
+              targetY: sp.y,
+              angle: prev ? prev.angle : sp.angle,
+              targetAngle: sp.angle,
+              score: sp.score,
+              shieldTime: sp.shield || 0,
+              mouthTimer,
+              segments: sp.segments || [],
+              isPlayer: false,
+              effects: {}
+            });
+          }
+        }
+        remoteWorms = others;
+      }
+    } else if (msg.type === 'kill_credit') {
+      playTone(680, 'triangle', 0.18, 0.09);
+      showKillToast();
+    } else if (msg.type === 'died') {
+      if (player && inGame) {
+        player.score = msg.score ?? player.score;
+        killWorm(player, [], null);
+      }
+    }
+  });
+
+  socket.addEventListener('close', () => {
+    if (wsSocket === socket) {
+      mpConnected = false;
+      remoteWorms = [];
+      wsSocket = null;
+      if (inGame) activateOfflineMode();
+    }
+  });
+
+  socket.addEventListener('error', () => {
+    mpConnected = false;
+    if (inGame) activateOfflineMode();
+  });
+
+  return socket;
+}
+
+// Pre-establish WebSocket handshake while in lobby for 0ms battle entry
+setTimeout(() => {
+  try { ensureSocketInitialized(); } catch (e) {}
+}, 50);
 
 function connectMultiplayer(skinColors) {
   if (offlineTimer) {
@@ -206,166 +351,24 @@ function connectMultiplayer(skinColors) {
     if (!mpConnected && inGame) {
       activateOfflineMode();
     }
-  }, 5000);
+  }, 4500);
 
   try {
-    if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
+    const socket = ensureSocketInitialized();
+    if (socket && socket.readyState === WebSocket.OPEN) {
       mpConnected = true;
       mpOfflineFallback = false;
-      mpReadyToRender = false;
-      bots = [];
-      wsSocket.send(JSON.stringify({
-        type: 'respawn',
-        name: state.name,
-        colors: skinColors
-      }));
-      return;
-    }
-
-    if (wsSocket && wsSocket.readyState === WebSocket.CONNECTING) return;
-
-    const socket = new WebSocket(getWsUrl());
-    wsSocket = socket;
-
-    socket.addEventListener('open', () => {
-      if (wsSocket !== socket) return;
-      if (offlineTimer) {
-        clearTimeout(offlineTimer);
-        offlineTimer = null;
-      }
-      mpConnected = true;
-      mpOfflineFallback = false;
+      mpAwaitingJoinAck = true;
       bots = [];
       socket.send(JSON.stringify({
-        type: 'join',
+        type: 'respawn',
         name: state.name,
-        colors: skinColors
+        colors: skinColors,
+        x: Math.round(player.x),
+        y: Math.round(player.y),
+        angle: Number(player.angle.toFixed(4))
       }));
-    });
-
-    socket.addEventListener('message', (event) => {
-      if (wsSocket !== socket) return;
-      let msg;
-      try {
-        msg = JSON.parse(event.data);
-      } catch {
-        return;
-      }
-
-      if (msg.type === 'joined') {
-        mpPlayerId = msg.id;
-        mpServerPos = null;
-        mpReadyToRender = false;
-        if (Array.isArray(msg.foods)) {
-          rebuildFoodList(msg.foods);
-        }
-      } else if (msg.type === 'state') {
-        if (!inGame || !player) return;
-
-        if (Array.isArray(msg.foodsFull)) {
-          rebuildFoodList(msg.foodsFull);
-        } else {
-          if (Array.isArray(msg.eaten)) {
-            for (let i = 0; i < msg.eaten.length; i++) {
-              removeFoodById(msg.eaten[i]);
-            }
-          }
-          if (Array.isArray(msg.spawned)) {
-            for (let i = 0; i < msg.spawned.length; i++) {
-              addFoodTuple(msg.spawned[i]);
-            }
-          }
-        }
-
-        if (Array.isArray(msg.players)) {
-          const prevRemoteMap = new Map(remoteWorms.map(w => [w.id, w]));
-          const others = [];
-
-          for (const sp of msg.players) {
-            if (sp.id === mpPlayerId) {
-              if (!mpServerPos) {
-                player.x = sp.x;
-                player.y = sp.y;
-                player.angle = sp.angle;
-                pointerAngle = sp.angle;
-                if (Array.isArray(sp.segments) && sp.segments.length > 0) {
-                  player.segments = sp.segments.map(s => ({ x: s.x, y: s.y }));
-                }
-                mpReadyToRender = true;
-              }
-              mpServerPos = {
-                x: sp.x,
-                y: sp.y,
-                angle: sp.angle,
-                boosting: Boolean(isBoosting),
-                at: performance.now()
-              };
-
-              if (sp.score > player.score + 1) {
-                const diff = Math.round(sp.score - player.score);
-                player.mouthTimer = 0.28;
-                playTone(540, 'sine', 0.05, 0.04);
-                floatingTexts.push({
-                  x: player.x,
-                  y: player.y - 16,
-                  text: `+${diff}`,
-                  alpha: 1.0,
-                  color: diff >= 20 ? '#ffd166' : '#80ed99'
-                });
-              }
-              player.score = sp.score;
-              player.shieldTime = sp.shield || 0;
-            } else {
-              const prev = prevRemoteMap.get(sp.id);
-              let mouthTimer = prev ? (prev.mouthTimer || 0) : 0;
-              if (prev && sp.score > prev.score + 1) {
-                mouthTimer = 0.28;
-              }
-              others.push({
-                id: sp.id,
-                name: sp.name,
-                colors: sp.colors,
-                x: prev ? prev.x : sp.x,
-                y: prev ? prev.y : sp.y,
-                targetX: sp.x,
-                targetY: sp.y,
-                angle: prev ? prev.angle : sp.angle,
-                targetAngle: sp.angle,
-                score: sp.score,
-                shieldTime: sp.shield || 0,
-                mouthTimer,
-                segments: sp.segments || [],
-                isPlayer: false,
-                effects: {}
-              });
-            }
-          }
-          remoteWorms = others;
-        }
-      } else if (msg.type === 'kill_credit') {
-        playTone(680, 'triangle', 0.18, 0.09);
-        showKillToast();
-      } else if (msg.type === 'died') {
-        if (player && inGame) {
-          player.score = msg.score ?? player.score;
-          killWorm(player, [], null);
-        }
-      }
-    });
-
-    socket.addEventListener('close', () => {
-      if (wsSocket === socket) {
-        mpConnected = false;
-        remoteWorms = [];
-        wsSocket = null;
-        if (inGame) activateOfflineMode();
-      }
-    });
-
-    socket.addEventListener('error', () => {
-      mpConnected = false;
-      if (inGame) activateOfflineMode();
-    });
+    }
   } catch (e) {
     mpConnected = false;
     activateOfflineMode();
@@ -381,12 +384,16 @@ function disconnectMultiplayer() {
   mpOfflineFallback = false;
   mpPlayerId = null;
   mpServerPos = null;
-  mpReadyToRender = false;
+  mpAwaitingJoinAck = false;
   remoteWorms = [];
   if (wsSocket) {
     try { wsSocket.close(); } catch (e) {}
     wsSocket = null;
   }
+  // Re-warm socket in background for the next match
+  setTimeout(() => {
+    try { ensureSocketInitialized(); } catch (e) {}
+  }, 150);
 }
 
 async function lockLandscapeOrientation() {
@@ -450,14 +457,18 @@ function calcWormRadius(score) {
 }
 
 function createWorm(x, y, name, skinColors, isPlayer = false) {
+  const angle = Math.random() * Math.PI * 2;
   const segs = [];
   for (let i = 0; i < 18; i++) {
-    segs.push({ x: x - i * 6, y });
+    segs.push({
+      x: x - Math.cos(angle) * i * 6,
+      y: y - Math.sin(angle) * i * 6
+    });
   }
   return {
     x,
     y,
-    angle: Math.random() * Math.PI * 2,
+    angle,
     score: 10,
     name,
     colors: skinColors,
@@ -466,7 +477,7 @@ function createWorm(x, y, name, skinColors, isPlayer = false) {
     shieldTime: isPlayer ? 4.0 : 2.0,
     mouthTimer: 0,
     aiTimer: 0,
-    aiTargetAngle: Math.random() * Math.PI * 2,
+    aiTargetAngle: angle,
     effects: { magnet: 0, double: 0, zoom: 0, freeBoost: 0 }
   };
 }
@@ -498,7 +509,7 @@ function showKillToast() {
 
 function startGame() {
   const now = performance.now();
-  if (now - lastStartAt < 500) return;
+  if (now - lastStartAt < 400) return;
   lastStartAt = now;
 
   inGame = true;
@@ -512,19 +523,20 @@ function startGame() {
 
   gameCanvas.width = window.innerWidth;
   gameCanvas.height = window.innerHeight;
-  arenaPattern = gCtx.createPattern(arenaTile, 'repeat');
+  if (!arenaPattern) {
+    arenaPattern = gCtx.createPattern(arenaTile, 'repeat');
+  }
 
   const skin = SKINS.find(s => s.id === state.selectedSkin) || SKINS[0];
-  player = createWorm(0, 0, state.name, skin.colors, true);
+  const spawn = randomPointInSquareArena(500);
+  player = createWorm(spawn.x, spawn.y, state.name, skin.colors, true);
   pointerAngle = player.angle;
   isBoosting = false;
   currentZoom = 1.24;
   mpServerPos = null;
   mpOfflineFallback = false;
-  mpReadyToRender = false;
+  mpAwaitingJoinAck = true;
 
-  foods = [];
-  foodsById.clear();
   floatingTexts = [];
   powerups = [];
   bots = [];
@@ -557,7 +569,7 @@ function exitToLobby() {
 
 // Responsive Steering Input Handlers
 function updatePointerAngleFromEvent(e) {
-  if (!inGame || !player || !mpReadyToRender) return;
+  if (!inGame || !player) return;
   const cx = gameCanvas.width / 2;
   const cy = gameCanvas.height / 2;
   pointerAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
