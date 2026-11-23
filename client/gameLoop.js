@@ -21,7 +21,7 @@ window.addEventListener('resize', () => {
   }
 });
 
-// Place body segments densely along the exact ground path of the head
+// Place body segments densely along the head path and smooth curves to eliminate sharp kinks
 function updateSegmentsFromPath(worm) {
   const targetLen = calcTargetSegments(worm.score);
   const r = calcWormRadius(worm.score);
@@ -56,6 +56,16 @@ function updateSegmentsFromPath(worm) {
     if (newSegs.length <= s) {
       const tailOrigin = worm.path[worm.path.length - 1];
       newSegs.push({ x: tailOrigin.x, y: tailOrigin.y });
+    }
+  }
+
+  // Light arc-smoothing pass so bends always form graceful curves instead of sharp corners
+  if (newSegs.length > 3) {
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 1; i < newSegs.length - 1; i++) {
+        newSegs[i].x = newSegs[i].x * 0.5 + (newSegs[i - 1].x + newSegs[i + 1].x) * 0.25;
+        newSegs[i].y = newSegs[i].y * 0.5 + (newSegs[i - 1].y + newSegs[i + 1].y) * 0.25;
+      }
     }
   }
 
@@ -96,10 +106,16 @@ function updateWorm(worm, dt) {
     while (turnDiff > Math.PI) turnDiff -= Math.PI * 2;
     while (turnDiff < -Math.PI) turnDiff += Math.PI * 2;
 
-    // Turn radius strictly matches worm body thickness rHead (no hollow circle inside)
-    const maxTurnRate = speed / (rHead * 0.92);
-    const step = turnDiff * Math.min(1, dt * 32);
-    worm.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
+    // Smoothly damped angular velocity for natural rounded S-arcs and tight loop turns
+    const maxTurnRate = speed / (rHead * 1.15);
+    const desiredVel = Math.max(-maxTurnRate, Math.min(maxTurnRate, turnDiff * 10));
+    worm.turnVel = (worm.turnVel || 0) + (desiredVel - (worm.turnVel || 0)) * Math.min(1, dt * 16);
+    if (Math.abs(turnDiff) < Math.abs(worm.turnVel * dt)) {
+      worm.angle = pointerAngle;
+      worm.turnVel = 0;
+    } else {
+      worm.angle += worm.turnVel * dt;
+    }
     sendMultiplayerInput();
   } else {
     worm.aiTimer -= dt;
@@ -115,9 +131,15 @@ function updateWorm(worm, dt) {
     turnDiff = worm.aiTargetAngle - worm.angle;
     while (turnDiff > Math.PI) turnDiff -= Math.PI * 2;
     while (turnDiff < -Math.PI) turnDiff += Math.PI * 2;
-    const maxTurnRate = speed / (rHead * 1.45);
-    const step = turnDiff * Math.min(1, dt * 18);
-    worm.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
+    const maxTurnRate = speed / (rHead * 1.55);
+    const desiredVel = Math.max(-maxTurnRate, Math.min(maxTurnRate, turnDiff * 10));
+    worm.turnVel = (worm.turnVel || 0) + (desiredVel - (worm.turnVel || 0)) * Math.min(1, dt * 16);
+    if (Math.abs(turnDiff) < Math.abs(worm.turnVel * dt)) {
+      worm.angle = worm.aiTargetAngle;
+      worm.turnVel = 0;
+    } else {
+      worm.angle += worm.turnVel * dt;
+    }
   }
 
   if (!mpConnected && canBoost && worm.effects.freeBoost <= 0) {
@@ -304,11 +326,11 @@ function drawWorm(worm) {
     gCtx.stroke();
   }
 
-  // Smooth tubular body: uniform thickness with gentle 4-segment rounded tail tip
+  // Smooth tubular body: uniform thickness with gentle 8-segment rounded tail tip
   for (let i = len - 1; i >= 1; i--) {
     const seg = worm.segments[i];
     const distFromTail = len - 1 - i;
-    const tipScale = distFromTail < 4 ? (0.76 + (distFromTail / 4) * 0.24) : 1.0;
+    const tipScale = distFromTail < 8 ? (0.72 + (distFromTail / 8) * 0.28) : 1.0;
     const segR = r * tipScale;
 
     gCtx.fillStyle = worm.colors[Math.floor(i / 2) % worm.colors.length];

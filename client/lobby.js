@@ -259,7 +259,7 @@ function updateAndDrawLobbyWorm() {
   for (let i = len - 1; i >= 1; i--) {
     const s = lobbyWorm.segments[i];
     const distFromTail = len - 1 - i;
-    const tipScale = distFromTail < 4 ? (0.76 + (distFromTail / 4) * 0.24) : 1.0;
+    const tipScale = distFromTail < 8 ? (0.72 + (distFromTail / 8) * 0.28) : 1.0;
     const segR = r * tipScale;
     lCtx.fillStyle = skin.colors[Math.floor(i / 2) % skin.colors.length];
     lCtx.beginPath();

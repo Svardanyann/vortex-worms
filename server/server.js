@@ -226,6 +226,7 @@ function createPlayer(id, name, colors, spawnHint = null) {
     y: spawn.y,
     angle,
     targetAngle: angle,
+    turnVel: 0,
     boosting: false,
     isBoostingNow: false,
     isBot: false,
@@ -294,7 +295,6 @@ function updateBotAI(bot, dt, allAlive) {
     return;
   }
 
-  // Keep distance from other worm heads so bots never stack on top of each other
   for (const other of allAlive) {
     if (other.id === bot.id || !other.alive) continue;
     const hdx = bot.x - other.x;
@@ -489,10 +489,16 @@ function stepSimulation(dt) {
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
 
-    // Turn radius strictly matches worm body thickness r (no hollow circle inside)
-    const maxTurnRate = p.isBot ? (speed / (r * 1.45)) : (speed / (r * 0.92));
-    const step = diff * Math.min(1, dt * 32);
-    p.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
+    // Smoothly damped angular velocity for natural rounded S-arcs and tight loop turns
+    const maxTurnRate = p.isBot ? (speed / (r * 1.55)) : (speed / (r * 1.15));
+    const desiredVel = Math.max(-maxTurnRate, Math.min(maxTurnRate, diff * 10));
+    p.turnVel = (p.turnVel || 0) + (desiredVel - (p.turnVel || 0)) * Math.min(1, dt * 16);
+    if (Math.abs(diff) < Math.abs(p.turnVel * dt)) {
+      p.angle = p.targetAngle;
+      p.turnVel = 0;
+    } else {
+      p.angle += p.turnVel * dt;
+    }
 
     if (canBoost) {
       p.score = Math.max(0, p.score - dt * 1);
