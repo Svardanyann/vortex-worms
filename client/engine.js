@@ -6,11 +6,11 @@ const ARENA_HALF = 4500;
 
 const FRUITS = [
   { emoji: '🍒', val: 2, r: 9 },
-  { emoji: '🫐', val: 3, r: 9 },
+  { emoji: '🍈', val: 3, r: 9 },
   { emoji: '🍇', val: 4, r: 10 },
-  { emoji: '🫒', val: 4, r: 9 },
+  { emoji: '🍄', val: 4, r: 9 },
   { emoji: '🍓', val: 5, r: 10 },
-  { emoji: '🫛', val: 6, r: 10 },
+  { emoji: '🥜', val: 6, r: 10 },
   { emoji: '🌶️', val: 7, r: 10 },
   { emoji: '🥕', val: 8, r: 11 },
   { emoji: '🍎', val: 9, r: 11 },
@@ -91,6 +91,8 @@ let floatingTexts = [];
 let powerups = [];
 let isBoosting = false;
 let pointerAngle = 0;
+let lastCursorX = null;
+let lastCursorY = null;
 let gameAnimId = null;
 let lastFrameTime = 0;
 let currentZoom = 1.24;
@@ -204,7 +206,6 @@ function ensureSocketInitialized() {
     mpConnected = true;
     mpOfflineFallback = false;
 
-    // If user already clicked Start while socket was connecting, join immediately
     if (inGame && player) {
       bots = [];
       mpAwaitingJoinAck = true;
@@ -235,6 +236,7 @@ function ensureSocketInitialized() {
       if (Array.isArray(msg.foods)) {
         rebuildFoodList(msg.foods);
       }
+      sendMultiplayerInput(true);
     } else if (msg.type === 'state') {
       if (!inGame || !player || mpAwaitingJoinAck) return;
 
@@ -263,8 +265,7 @@ function ensureSocketInitialized() {
               x: sp.x,
               y: sp.y,
               angle: sp.angle,
-              boosting: Boolean(isBoosting),
-              at: performance.now()
+              boosting: Boolean(isBoosting)
             };
 
             if (sp.score > player.score + 1) {
@@ -336,7 +337,6 @@ function ensureSocketInitialized() {
   return socket;
 }
 
-// Pre-establish WebSocket handshake while in lobby for 0ms battle entry
 setTimeout(() => {
   try { ensureSocketInitialized(); } catch (e) {}
 }, 50);
@@ -390,7 +390,6 @@ function disconnectMultiplayer() {
     try { wsSocket.close(); } catch (e) {}
     wsSocket = null;
   }
-  // Re-warm socket in background for the next match
   setTimeout(() => {
     try { ensureSocketInitialized(); } catch (e) {}
   }, 150);
@@ -434,7 +433,7 @@ function populateDenseFruits() {
   foods = [];
   foodsById.clear();
   respawnQueue = [];
-  const clusterCount = 450;
+  const clusterCount = 1000;
   for (let c = 0; c < clusterCount; c++) {
     const center = randomPointInSquareArena(160);
     const itemsInCluster = 2 + Math.floor(Math.random() * 3);
@@ -456,13 +455,15 @@ function calcWormRadius(score) {
   return Math.min(34, 13 + Math.pow(Math.max(10, score), 0.34) * 0.85);
 }
 
-function createWorm(x, y, name, skinColors, isPlayer = false) {
-  const angle = Math.random() * Math.PI * 2;
+function createWorm(x, y, name, skinColors, isPlayer = false, initialAngle = null) {
+  const angle = (typeof initialAngle === 'number' && Number.isFinite(initialAngle))
+    ? initialAngle
+    : Math.random() * Math.PI * 2;
   const segs = [];
   for (let i = 0; i < 18; i++) {
     segs.push({
-      x: x - Math.cos(angle) * i * 6,
-      y: y - Math.sin(angle) * i * 6
+      x: x - Math.cos(angle) * i * 6.2,
+      y: y - Math.sin(angle) * i * 6.2
     });
   }
   return {
@@ -527,9 +528,14 @@ function startGame() {
     arenaPattern = gCtx.createPattern(arenaTile, 'repeat');
   }
 
+  let startAngle = null;
+  if (lastCursorX !== null && lastCursorY !== null) {
+    startAngle = Math.atan2(lastCursorY - gameCanvas.height / 2, lastCursorX - gameCanvas.width / 2);
+  }
+
   const skin = SKINS.find(s => s.id === state.selectedSkin) || SKINS[0];
   const spawn = randomPointInSquareArena(500);
-  player = createWorm(spawn.x, spawn.y, state.name, skin.colors, true);
+  player = createWorm(spawn.x, spawn.y, state.name, skin.colors, true, startAngle);
   pointerAngle = player.angle;
   isBoosting = false;
   currentZoom = 1.24;
@@ -569,6 +575,8 @@ function exitToLobby() {
 
 // Responsive Steering Input Handlers
 function updatePointerAngleFromEvent(e) {
+  lastCursorX = e.clientX;
+  lastCursorY = e.clientY;
   if (!inGame || !player) return;
   const cx = gameCanvas.width / 2;
   const cy = gameCanvas.height / 2;
@@ -576,13 +584,10 @@ function updatePointerAngleFromEvent(e) {
   sendMultiplayerInput();
 }
 
+window.addEventListener('pointermove', updatePointerAngleFromEvent);
 gameCanvas.addEventListener('pointerdown', (e) => {
   updatePointerAngleFromEvent(e);
   sendMultiplayerInput(true);
-});
-
-gameCanvas.addEventListener('pointermove', (e) => {
-  updatePointerAngleFromEvent(e);
 });
 
 const boostBtn = document.getElementById('boostBtn');

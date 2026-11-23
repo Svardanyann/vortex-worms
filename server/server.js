@@ -6,15 +6,15 @@ const { WebSocketServer } = require('ws');
 const PORT = process.env.PORT || 3000;
 const ARENA_HALF = 4500;
 const TICK_RATE = 25;
-const FOOD_COUNT = 1000;
+const FOOD_COUNT = 2000;
 
 const FRUITS = [
   { emoji: '🍒', val: 2, r: 9 },
-  { emoji: '🫐', val: 3, r: 9 },
+  { emoji: '🍈', val: 3, r: 9 },
   { emoji: '🍇', val: 4, r: 10 },
-  { emoji: '🫒', val: 4, r: 9 },
+  { emoji: '🍄', val: 4, r: 9 },
   { emoji: '🍓', val: 5, r: 10 },
-  { emoji: '🫛', val: 6, r: 10 },
+  { emoji: '🥜', val: 6, r: 10 },
   { emoji: '🌶️', val: 7, r: 10 },
   { emoji: '🥕', val: 8, r: 11 },
   { emoji: '🍎', val: 9, r: 11 },
@@ -238,7 +238,7 @@ function killPlayer(victim, killer) {
   const watermelonIdx = FRUITS.length - 1;
   for (let i = 0; i < victim.segments.length; i += 2) {
     const seg = victim.segments[i];
-    if (foods.length < 1800) {
+    if (foods.length < 3200) {
       const drop = createFood(
         seg.x + (Math.random() - 0.5) * 18,
         seg.y + (Math.random() - 0.5) * 18,

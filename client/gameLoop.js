@@ -40,6 +40,11 @@ function updateWorm(worm, dt) {
     if (worm.effects[k] > 0) worm.effects[k] = Math.max(0, worm.effects[k] - dt);
   }
 
+  // Wait ~100ms for server join confirmation before advancing so head never snaps back
+  if (worm.isPlayer && mpConnected && mpAwaitingJoinAck) {
+    return;
+  }
+
   if (worm.isPlayer) {
     let diff = pointerAngle - worm.angle;
     while (diff > Math.PI) diff -= Math.PI * 2;
@@ -74,23 +79,34 @@ function updateWorm(worm, dt) {
   worm.x += Math.cos(worm.angle) * speed * dt;
   worm.y += Math.sin(worm.angle) * speed * dt;
 
-  // Predictive dead-reckoning reconciliation
+  // Smoothly advance server ghost and shift whole body together so head never folds into segments
   if (mpConnected && worm.isPlayer && mpServerPos) {
-    const elapsed = Math.min(0.12, Math.max(0, (performance.now() - mpServerPos.at) / 1000));
     const srvSpeed = (mpServerPos.boosting && worm.score > 15) ? 340 : 195;
-    const predX = mpServerPos.x + Math.cos(mpServerPos.angle) * srvSpeed * elapsed;
-    const predY = mpServerPos.y + Math.sin(mpServerPos.angle) * srvSpeed * elapsed;
+    mpServerPos.x += Math.cos(mpServerPos.angle) * srvSpeed * dt;
+    mpServerPos.y += Math.sin(mpServerPos.angle) * srvSpeed * dt;
 
-    const errX = predX - worm.x;
-    const errY = predY - worm.y;
+    const errX = mpServerPos.x - worm.x;
+    const errY = mpServerPos.y - worm.y;
     const errDist = Math.hypot(errX, errY);
-    if (errDist > 180) {
-      worm.x = predX;
-      worm.y = predY;
-    } else {
-      const blend = Math.min(1, dt * 8);
-      worm.x += errX * blend;
-      worm.y += errY * blend;
+
+    let corrX = 0;
+    let corrY = 0;
+    if (errDist > 220) {
+      corrX = errX;
+      corrY = errY;
+    } else if (errDist > 1) {
+      const blend = Math.min(1, dt * 6);
+      corrX = errX * blend;
+      corrY = errY * blend;
+    }
+
+    if (corrX !== 0 || corrY !== 0) {
+      worm.x += corrX;
+      worm.y += corrY;
+      for (let i = 1; i < worm.segments.length; i++) {
+        worm.segments[i].x += corrX;
+        worm.segments[i].y += corrY;
+      }
     }
   }
 
@@ -201,13 +217,19 @@ function drawWorm(worm) {
     gCtx.stroke();
   }
 
-  for (let i = len - 1; i >= 0; i--) {
+  for (let i = len - 1; i >= 1; i--) {
     const seg = worm.segments[i];
     gCtx.fillStyle = worm.colors[i % worm.colors.length];
     gCtx.beginPath();
     gCtx.arc(seg.x, seg.y, r, 0, Math.PI * 2);
     gCtx.fill();
   }
+
+  // Always draw head circle on top so eyes & mouth never clip under body segments
+  gCtx.fillStyle = worm.colors[0];
+  gCtx.beginPath();
+  gCtx.arc(worm.x, worm.y, r, 0, Math.PI * 2);
+  gCtx.fill();
 
   const mx = worm.x + Math.cos(worm.angle) * (r * 0.66);
   const my = worm.y + Math.sin(worm.angle) * (r * 0.66);
