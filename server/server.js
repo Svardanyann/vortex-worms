@@ -459,9 +459,9 @@ function stepSimulation(dt) {
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
 
-    const sizeFactor = Math.max(0.82, 10.5 / r);
-    const maxTurnRate = 12.5 * sizeFactor;
-    const step = diff * Math.min(1, dt * 28);
+    const sizeFactor = Math.max(0.72, 10.5 / r);
+    const maxTurnRate = 5.4 * sizeFactor;
+    const step = diff * Math.min(1, dt * 11);
     p.angle += Math.max(-maxTurnRate * dt, Math.min(maxTurnRate * dt, step));
 
     if (canBoost) {

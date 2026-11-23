@@ -80,11 +80,11 @@ function resizeLobby() {
 window.addEventListener('resize', resizeLobby);
 resizeLobby();
 
-// Matches in-game starting worm exact proportions and uniform thickness
+// Matches in-game starting worm exact proportions and natural tail taper
 const lobbyWorm = {
   segments: [],
-  segCount: 14,
-  segDist: 6.4,
+  segCount: 16,
+  segDist: 6.0,
   radius: 13,
   angle: 0,
   speed: 1.5,
@@ -254,12 +254,17 @@ function updateAndDrawLobbyWorm() {
 
   const skin = SKINS.find(s => s.id === state.selectedSkin) || SKINS[0];
   const r = lobbyWorm.radius;
+  const len = lobbyWorm.segments.length;
+  const taperStart = len * 0.65;
 
-  for (let i = lobbyWorm.segments.length - 1; i >= 1; i--) {
+  for (let i = len - 1; i >= 1; i--) {
     const s = lobbyWorm.segments[i];
+    const segR = i <= taperStart
+      ? r
+      : r * (1 - 0.48 * ((i - taperStart) / Math.max(1, len - 1 - taperStart)));
     lCtx.fillStyle = skin.colors[i % skin.colors.length];
     lCtx.beginPath();
-    lCtx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    lCtx.arc(s.x, s.y, segR, 0, Math.PI * 2);
     lCtx.fill();
   }
 
@@ -268,7 +273,6 @@ function updateAndDrawLobbyWorm() {
   lCtx.arc(head.x, head.y, r, 0, Math.PI * 2);
   lCtx.fill();
 
-  // Same cute smile as in-game worm
   const mx = head.x + Math.cos(lobbyWorm.angle) * (r * 0.66);
   const my = head.y + Math.sin(lobbyWorm.angle) * (r * 0.66);
   lCtx.save();
