@@ -12,6 +12,13 @@ const fruitSprites = FRUITS.map((spec) => {
   return c;
 });
 
+window.addEventListener('resize', () => {
+  if (!inGame) return;
+  gameCanvas.width = window.innerWidth;
+  gameCanvas.height = window.innerHeight;
+  arenaPattern = gCtx.createPattern(arenaTile, 'repeat');
+});
+
 function updateWorm(worm, dt) {
   if (worm.shieldTime > 0) {
     const prevShield = worm.shieldTime;
@@ -65,15 +72,21 @@ function updateWorm(worm, dt) {
   worm.x += Math.cos(worm.angle) * speed * dt;
   worm.y += Math.sin(worm.angle) * speed * dt;
 
+  // Predictive dead-reckoning reconciliation (eliminates start & mid-game stutter)
   if (mpConnected && worm.isPlayer && mpServerPos) {
-    const errX = mpServerPos.x - worm.x;
-    const errY = mpServerPos.y - worm.y;
+    const elapsed = Math.min(0.12, Math.max(0, (performance.now() - mpServerPos.at) / 1000));
+    const srvSpeed = (mpServerPos.boosting && worm.score > 15) ? 340 : 195;
+    const predX = mpServerPos.x + Math.cos(mpServerPos.angle) * srvSpeed * elapsed;
+    const predY = mpServerPos.y + Math.sin(mpServerPos.angle) * srvSpeed * elapsed;
+
+    const errX = predX - worm.x;
+    const errY = predY - worm.y;
     const errDist = Math.hypot(errX, errY);
-    if (errDist > 160) {
-      worm.x = mpServerPos.x;
-      worm.y = mpServerPos.y;
+    if (errDist > 180) {
+      worm.x = predX;
+      worm.y = predY;
     } else {
-      const blend = Math.min(1, dt * 10);
+      const blend = Math.min(1, dt * 8);
       worm.x += errX * blend;
       worm.y += errY * blend;
     }
@@ -285,7 +298,7 @@ function drawMinimap() {
     gCtx.fill();
   });
 
-  if (player) {
+  if (player && mpReadyToRender) {
     gCtx.fillStyle = '#80ed99';
     gCtx.beginPath();
     gCtx.arc(cx + player.x * scale, cy + player.y * scale, 3.5, 0, Math.PI * 2);
@@ -298,6 +311,14 @@ function gameLoop(now) {
   if (!inGame || !player) return;
   const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
   lastFrameTime = now;
+
+  // Wait until first authoritative server spawn packet arrives before moving/jumping
+  if (!mpReadyToRender) {
+    gCtx.fillStyle = '#14362b';
+    gCtx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+    gameAnimId = requestAnimationFrame(gameLoop);
+    return;
+  }
 
   if (!mpConnected) {
     for (let i = respawnQueue.length - 1; i >= 0; i--) {

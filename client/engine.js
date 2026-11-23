@@ -94,25 +94,32 @@ let pointerAngle = 0;
 let gameAnimId = null;
 let lastFrameTime = 0;
 let currentZoom = 1.24;
+let lastStartAt = 0;
 
 // ================= MULTIPLAYER WEBSOCKET STATE =================
 const PROD_WS_URL = 'wss://vortex-worms.onrender.com';
+const PROD_HTTP_URL = 'https://vortex-worms.onrender.com';
 let wsSocket = null;
 let mpConnected = false;
 let mpOfflineFallback = false;
 let mpPlayerId = null;
 let mpServerPos = null;
+let mpReadyToRender = false;
 let lastInputSentAt = 0;
 let offlineTimer = null;
 
-function getWsUrl() {
-  const { protocol, hostname, host, port } = window.location;
-  const isCapacitorApp =
+function isCapacitorEnv() {
+  const { protocol, hostname, port } = window.location;
+  return (
     protocol === 'capacitor:' ||
     protocol === 'file:' ||
-    (hostname === 'localhost' && !port);
+    (hostname === 'localhost' && !port)
+  );
+}
 
-  if (isCapacitorApp) return PROD_WS_URL;
+function getWsUrl() {
+  if (isCapacitorEnv()) return PROD_WS_URL;
+  const { protocol, host } = window.location;
   if (protocol === 'http:' || protocol === 'https:') {
     const proto = protocol === 'https:' ? 'wss:' : 'ws:';
     return `${proto}//${host}`;
@@ -120,24 +127,56 @@ function getWsUrl() {
   return PROD_WS_URL;
 }
 
+// Wake up Render server in background while user is in lobby
+(function prewarmServer() {
+  try {
+    const pingUrl = isCapacitorEnv() ? `${PROD_HTTP_URL}/?ping=1` : '/?ping=1';
+    fetch(pingUrl, { cache: 'no-store' }).catch(() => {});
+  } catch (e) {}
+})();
+
 function unpackFoodTuple(tuple) {
   const [id, x, y, t] = tuple;
   const spec = FRUITS[t] || FRUITS[0];
   return { id, x, y, t, emoji: spec.emoji, val: spec.val, r: spec.r };
 }
 
-function rebuildFoodMap(packedList) {
-  foods = [];
+function rebuildFoodList(packedList) {
+  foods = new Array(packedList.length);
   foodsById.clear();
   for (let i = 0; i < packedList.length; i++) {
     const item = unpackFoodTuple(packedList[i]);
-    foods.push(item);
-    foodsById.set(item.id, item);
+    foods[i] = item;
+    foodsById.set(item.id, i);
   }
 }
 
+function removeFoodById(id) {
+  const idx = foodsById.get(id);
+  if (idx === undefined) return;
+  const lastIdx = foods.length - 1;
+  if (idx !== lastIdx) {
+    const lastItem = foods[lastIdx];
+    foods[idx] = lastItem;
+    foodsById.set(lastItem.id, idx);
+  }
+  foods.pop();
+  foodsById.delete(id);
+}
+
+function addFoodTuple(tup) {
+  const item = unpackFoodTuple(tup);
+  const existingIdx = foodsById.get(item.id);
+  if (existingIdx !== undefined) {
+    foods[existingIdx] = item;
+    return;
+  }
+  foodsById.set(item.id, foods.length);
+  foods.push(item);
+}
+
 function sendMultiplayerInput(force = false) {
-  if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN || !inGame || !player) return;
+  if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN || !inGame || !player || !mpReadyToRender) return;
   const now = performance.now();
   if (!force && now - lastInputSentAt < 33) return;
   lastInputSentAt = now;
@@ -151,6 +190,7 @@ function sendMultiplayerInput(force = false) {
 function activateOfflineMode() {
   if (mpConnected || mpOfflineFallback) return;
   mpOfflineFallback = true;
+  mpReadyToRender = true;
   populateDenseFruits();
   bots = [];
   for (let i = 0; i < 24; i++) bots.push(spawnBot());
@@ -172,6 +212,7 @@ function connectMultiplayer(skinColors) {
     if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
       mpConnected = true;
       mpOfflineFallback = false;
+      mpReadyToRender = false;
       bots = [];
       wsSocket.send(JSON.stringify({
         type: 'respawn',
@@ -214,27 +255,25 @@ function connectMultiplayer(skinColors) {
       if (msg.type === 'joined') {
         mpPlayerId = msg.id;
         mpServerPos = null;
+        mpReadyToRender = false;
         if (Array.isArray(msg.foods)) {
-          rebuildFoodMap(msg.foods);
+          rebuildFoodList(msg.foods);
         }
       } else if (msg.type === 'state') {
         if (!inGame || !player) return;
 
         if (Array.isArray(msg.foodsFull)) {
-          rebuildFoodMap(msg.foodsFull);
+          rebuildFoodList(msg.foodsFull);
         } else {
           if (Array.isArray(msg.eaten)) {
-            for (const eid of msg.eaten) {
-              foodsById.delete(eid);
+            for (let i = 0; i < msg.eaten.length; i++) {
+              removeFoodById(msg.eaten[i]);
             }
-            foods = Array.from(foodsById.values());
           }
           if (Array.isArray(msg.spawned)) {
-            for (const tup of msg.spawned) {
-              const item = unpackFoodTuple(tup);
-              foodsById.set(item.id, item);
+            for (let i = 0; i < msg.spawned.length; i++) {
+              addFoodTuple(msg.spawned[i]);
             }
-            foods = Array.from(foodsById.values());
           }
         }
 
@@ -252,8 +291,15 @@ function connectMultiplayer(skinColors) {
                 if (Array.isArray(sp.segments) && sp.segments.length > 0) {
                   player.segments = sp.segments.map(s => ({ x: s.x, y: s.y }));
                 }
+                mpReadyToRender = true;
               }
-              mpServerPos = { x: sp.x, y: sp.y, angle: sp.angle };
+              mpServerPos = {
+                x: sp.x,
+                y: sp.y,
+                angle: sp.angle,
+                boosting: Boolean(isBoosting),
+                at: performance.now()
+              };
 
               if (sp.score > player.score + 1) {
                 const diff = Math.round(sp.score - player.score);
@@ -335,6 +381,7 @@ function disconnectMultiplayer() {
   mpOfflineFallback = false;
   mpPlayerId = null;
   mpServerPos = null;
+  mpReadyToRender = false;
   remoteWorms = [];
   if (wsSocket) {
     try { wsSocket.close(); } catch (e) {}
@@ -450,6 +497,10 @@ function showKillToast() {
 }
 
 function startGame() {
+  const now = performance.now();
+  if (now - lastStartAt < 500) return;
+  lastStartAt = now;
+
   inGame = true;
   document.body.classList.add('in-game');
   lockLandscapeOrientation();
@@ -470,6 +521,7 @@ function startGame() {
   currentZoom = 1.24;
   mpServerPos = null;
   mpOfflineFallback = false;
+  mpReadyToRender = false;
 
   foods = [];
   foodsById.clear();
@@ -505,7 +557,7 @@ function exitToLobby() {
 
 // Responsive Steering Input Handlers
 function updatePointerAngleFromEvent(e) {
-  if (!inGame || !player) return;
+  if (!inGame || !player || !mpReadyToRender) return;
   const cx = gameCanvas.width / 2;
   const cy = gameCanvas.height / 2;
   pointerAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
