@@ -564,6 +564,7 @@ function updateBoostState() {
 }
 
 function startGame() {
+  clearAwayTimer();
   const now = performance.now();
   if (now - lastStartAt < 400) return;
   lastStartAt = now;
@@ -622,6 +623,7 @@ function startGame() {
 }
 
 function exitToLobby() {
+  clearAwayTimer();
   inGame = false;
   musicPausedByGameOver = false;
   resetTouchControls();
@@ -818,3 +820,43 @@ function killWorm(worm, allWorms, killer = null) {
     }
   }
 }
+
+// ================= 5-SECOND BACKGROUND / INACTIVE KILL TIMER =================
+let awayKillTimer = null;
+
+function startAwayTimer() {
+  if (!inGame || !player || awayKillTimer) return;
+  awayKillTimer = setTimeout(() => {
+    awayKillTimer = null;
+    if (inGame && player) {
+      if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
+        try { wsSocket.send(JSON.stringify({ type: 'leave' })); } catch (e) {}
+      }
+      disconnectMultiplayer();
+      killWorm(player, [], null);
+    }
+  }, 5000);
+}
+
+function clearAwayTimer() {
+  if (awayKillTimer) {
+    clearTimeout(awayKillTimer);
+    awayKillTimer = null;
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    startAwayTimer();
+  } else {
+    clearAwayTimer();
+  }
+});
+
+window.addEventListener('blur', () => {
+  startAwayTimer();
+});
+
+window.addEventListener('focus', () => {
+  clearAwayTimer();
+});
