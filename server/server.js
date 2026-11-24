@@ -7,7 +7,10 @@ const PORT = process.env.PORT || 3000;
 const ARENA_HALF = 4500;
 const TICK_RATE = 25;
 const FOOD_COUNT = 4000;
+const POWERUP_COUNT = 45;
 const BOT_COUNT = 10;
+
+const POWERUP_TYPES = ['magnet', 'zoom', 'freeBoost'];
 
 const BOT_NAMES = [
   'Արամ', 'Անի', 'Դավիթ', 'Max', 'Nika',
@@ -85,10 +88,13 @@ const wss = new WebSocketServer({ server: httpServer });
 const players = new Map();
 const socketsById = new Map();
 let foods = [];
+let powerups = [];
 let respawnQueue = [];
 let tickEatenIds = [];
 let tickSpawnedFoods = [];
+let tickPowerupsDirty = false;
 let nextFoodId = 1;
+let nextPowerupId = 1;
 let nextPlayerId = 1;
 let tickCounter = 0;
 
@@ -134,6 +140,17 @@ function createFood(x, y, forcedIdx = null) {
   };
 }
 
+function createPowerup() {
+  const pos = randomArenaPos(260);
+  const type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+  return {
+    id: nextPowerupId++,
+    x: Math.round(pos.x),
+    y: Math.round(pos.y),
+    type
+  };
+}
+
 function packFood(f) {
   return [f.id, f.x, f.y, f.t];
 }
@@ -143,6 +160,10 @@ function initFoods() {
   respawnQueue = [];
   for (let i = 0; i < FOOD_COUNT; i++) {
     foods.push(createFood());
+  }
+  powerups = [];
+  for (let i = 0; i < POWERUP_COUNT; i++) {
+    powerups.push(createPowerup());
   }
 }
 
@@ -157,7 +178,7 @@ function calcSegmentsCount(score) {
 function updatePlayerSegmentsFromPath(p) {
   const targetSegs = calcSegmentsCount(p.score);
   const r = calcRadius(p.score);
-  const spacing = Math.max(3.0, r * 0.25);
+  const spacing = Math.max(2.6, r * 0.22);
   if (!p.path || p.path.length === 0) {
     p.path = [{ x: p.x, y: p.y }];
   }
@@ -213,9 +234,17 @@ function createPlayer(id, name, colors, spawnHint = null) {
     angle = spawnHint.angle;
   }
 
+  const initSegs = 14;
+  const spacing = Math.max(2.6, calcRadius(0) * 0.22);
+  const pathPts = [];
   const segments = [];
-  for (let i = 0; i < 14; i++) {
-    segments.push({ x: spawn.x, y: spawn.y });
+  for (let i = 0; i < initSegs; i++) {
+    const pt = {
+      x: spawn.x - Math.cos(angle) * i * spacing,
+      y: spawn.y - Math.sin(angle) * i * spacing
+    };
+    pathPts.push(pt);
+    segments.push({ ...pt });
   }
 
   return {
@@ -232,7 +261,9 @@ function createPlayer(id, name, colors, spawnHint = null) {
     score: 0,
     kills: 0,
     shield: 4.0,
-    path: [{ x: spawn.x, y: spawn.y }],
+    inventory: { magnet: 0, zoom: 0, freeBoost: 0 },
+    effects: { magnet: 0, zoom: 0, freeBoost: 0 },
+    path: pathPts,
     segments,
     alive: true
   };
@@ -250,7 +281,7 @@ function createBot() {
   bot.aiTargetAngle = bot.angle;
 
   const targetSegs = calcSegmentsCount(bot.score);
-  const spacing = Math.max(3.0, calcRadius(bot.score) * 0.25);
+  const spacing = Math.max(2.6, calcRadius(bot.score) * 0.22);
   bot.path = [];
   bot.segments = [];
   for (let i = 0; i < targetSegs; i++) {
@@ -371,7 +402,8 @@ function spawnOrRespawnSocketPlayer(ws, id, msg, existingPlayer) {
     type: 'joined',
     id,
     arenaHalf: ARENA_HALF,
-    foods: foods.map(packFood)
+    foods: foods.map(packFood),
+    powerups
   }));
   return fresh;
 }
@@ -400,6 +432,17 @@ wss.on('connection', (ws) => {
         player.targetAngle = msg.angle;
       }
       player.boosting = Boolean(msg.boosting);
+    } else if (msg.type === 'use_powerup' && player && player.alive) {
+      const pType = msg.powerup;
+      if (POWERUP_TYPES.includes(pType) && player.inventory[pType] > 0) {
+        player.inventory[pType] -= 1;
+        player.effects[pType] = 12.0;
+        ws.send(JSON.stringify({
+          type: 'powerup_state',
+          inventory: player.inventory,
+          effects: player.effects
+        }));
+      }
     }
   });
 
@@ -468,11 +511,21 @@ function stepSimulation(dt) {
     }
   }
 
+  while (powerups.length < POWERUP_COUNT) {
+    powerups.push(createPowerup());
+    tickPowerupsDirty = true;
+  }
+
   const activePlayers = Array.from(players.values()).filter((p) => p.alive);
 
   for (const p of activePlayers) {
     if (p.shield > 0) {
       p.shield = Math.max(0, p.shield - dt);
+    }
+    for (const k of POWERUP_TYPES) {
+      if (p.effects[k] > 0) {
+        p.effects[k] = Math.max(0, p.effects[k] - dt);
+      }
     }
 
     if (p.isBot) {
@@ -480,7 +533,8 @@ function stepSimulation(dt) {
     }
 
     const r = calcRadius(p.score);
-    const canBoost = p.boosting && p.score > 1;
+    const hasFreeBoost = p.effects.freeBoost > 0;
+    const canBoost = hasFreeBoost || (p.boosting && p.score > 1);
     p.isBoostingNow = canBoost;
     const speed = canBoost ? 280 : 160;
 
@@ -488,8 +542,8 @@ function stepSimulation(dt) {
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
 
-    // Immediate, crisp arc steering with natural turning radius (no sluggish lag)
-    const turnRadius = p.isBot ? (r * 1.75) : (r * 1.32);
+    // Exact proportional arc radius so 180-deg turns touch cleanly without gaps
+    const turnRadius = p.isBot ? (r * 1.65) : (r * 0.98);
     const maxStep = (speed / turnRadius) * dt;
     if (Math.abs(diff) <= maxStep) {
       p.angle = p.targetAngle;
@@ -497,7 +551,7 @@ function stepSimulation(dt) {
       p.angle += Math.sign(diff) * maxStep;
     }
 
-    if (canBoost) {
+    if (canBoost && !hasFreeBoost) {
       p.score = Math.max(0, p.score - dt * 1);
     }
 
@@ -522,7 +576,31 @@ function stepSimulation(dt) {
 
     updatePlayerSegmentsFromPath(p);
 
-    const eatR = r + 14;
+    // Collect powerup orbs
+    const puEatR = r + 18;
+    for (let i = powerups.length - 1; i >= 0; i--) {
+      const pu = powerups[i];
+      const dx = p.x - pu.x;
+      const dy = p.y - pu.y;
+      if (dx * dx + dy * dy < puEatR * puEatR) {
+        if (!p.isBot) {
+          p.inventory[pu.type] = (p.inventory[pu.type] || 0) + 1;
+          const ws = socketsById.get(p.id);
+          if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({
+              type: 'powerup_state',
+              picked: pu.type,
+              inventory: p.inventory,
+              effects: p.effects
+            }));
+          }
+        }
+        powerups.splice(i, 1);
+        tickPowerupsDirty = true;
+      }
+    }
+
+    const eatR = r + (p.effects.magnet > 0 ? 130 : 14);
     for (let i = foods.length - 1; i >= 0; i--) {
       const f = foods[i];
       const dx = p.x - f.x;
@@ -593,12 +671,16 @@ function broadcastState() {
   if (tickSpawnedFoods.length > 0) {
     stateMsg.spawned = tickSpawnedFoods;
   }
+  if (tickPowerupsDirty || tickCounter % 75 === 0) {
+    stateMsg.powerups = powerups;
+  }
   if (tickCounter % 100 === 0) {
     stateMsg.foodsFull = foods.map(packFood);
   }
 
   tickEatenIds = [];
   tickSpawnedFoods = [];
+  tickPowerupsDirty = false;
 
   const payload = JSON.stringify(stateMsg);
   for (const ws of socketsById.values()) {
