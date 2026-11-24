@@ -131,11 +131,13 @@ let lastSentBoost = null;
 let offlineTimer = null;
 
 function isCapacitorEnv() {
-  const { protocol, hostname, port } = window.location;
+  const { protocol, hostname } = window.location;
   return (
+    Boolean(window.Capacitor) ||
     protocol === 'capacitor:' ||
     protocol === 'file:' ||
-    (hostname === 'localhost' && !port)
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1'
   );
 }
 
