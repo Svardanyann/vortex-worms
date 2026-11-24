@@ -118,7 +118,7 @@ let pendingTaps = new Map();
 let lastCompletedTap = { time: 0, x: 0, y: 0 };
 
 // ================= MULTIPLAYER WEBSOCKET STATE =================
-const PROD_WS_URL = 'wss://vortex-worms.onrender.com';
+const PROD_WS_URL = 'ws://92.5.178.137:3000';
 let wsSocket = null;
 let mpConnected = false;
 let mpOfflineFallback = false;
