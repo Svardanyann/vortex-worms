@@ -226,7 +226,6 @@ function createPlayer(id, name, colors, spawnHint = null) {
     y: spawn.y,
     angle,
     targetAngle: angle,
-    turnVel: 0,
     boosting: false,
     isBoostingNow: false,
     isBot: false,
@@ -489,15 +488,13 @@ function stepSimulation(dt) {
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
 
-    // Smoothly damped angular velocity for natural rounded S-arcs and tight loop turns
-    const maxTurnRate = p.isBot ? (speed / (r * 1.55)) : (speed / (r * 1.15));
-    const desiredVel = Math.max(-maxTurnRate, Math.min(maxTurnRate, diff * 10));
-    p.turnVel = (p.turnVel || 0) + (desiredVel - (p.turnVel || 0)) * Math.min(1, dt * 16);
-    if (Math.abs(diff) < Math.abs(p.turnVel * dt)) {
+    // Immediate, crisp arc steering with natural turning radius (no sluggish lag)
+    const turnRadius = p.isBot ? (r * 1.75) : (r * 1.32);
+    const maxStep = (speed / turnRadius) * dt;
+    if (Math.abs(diff) <= maxStep) {
       p.angle = p.targetAngle;
-      p.turnVel = 0;
     } else {
-      p.angle += p.turnVel * dt;
+      p.angle += Math.sign(diff) * maxStep;
     }
 
     if (canBoost) {
@@ -507,7 +504,7 @@ function stepSimulation(dt) {
     p.x += Math.cos(p.angle) * speed * dt;
     p.y += Math.sin(p.angle) * speed * dt;
 
-    if (Math.hypot(p.x - p.path[0].x, p.y - p.path[0].y) >= 1.2) {
+    if (Math.hypot(p.x - p.path[0].x, p.y - p.path[0].y) >= 0.8) {
       p.path.unshift({ x: p.x, y: p.y });
     } else {
       p.path[0].x = p.x;

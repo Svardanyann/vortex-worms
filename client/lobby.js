@@ -80,11 +80,11 @@ function resizeLobby() {
 window.addEventListener('resize', resizeLobby);
 resizeLobby();
 
-// Smooth tubular worm matching in-game proportions
+// Continuous 3D tubular worm matching in-game look
 const lobbyWorm = {
   segments: [],
-  segCount: 24,
-  segDist: 3.3,
+  segCount: 28,
+  segDist: 2.8,
   radius: 13,
   angle: 0,
   speed: 1.5,
@@ -254,20 +254,23 @@ function updateAndDrawLobbyWorm() {
 
   const skin = SKINS.find(s => s.id === state.selectedSkin) || SKINS[0];
   const r = lobbyWorm.radius;
-  const len = lobbyWorm.segments.length;
 
-  for (let i = len - 1; i >= 1; i--) {
-    const s = lobbyWorm.segments[i];
-    const distFromTail = len - 1 - i;
-    const tipScale = distFromTail < 8 ? (0.72 + (distFromTail / 8) * 0.28) : 1.0;
-    const segR = r * tipScale;
-    lCtx.fillStyle = skin.colors[Math.floor(i / 2) % skin.colors.length];
-    lCtx.beginPath();
-    lCtx.arc(s.x, s.y, segR, 0, Math.PI * 2);
-    lCtx.fill();
-  }
+  renderContinuousWormBody(lCtx, lobbyWorm.segments, r, skin.colors, false);
+
+  const headGrad = lCtx.createRadialGradient(
+    head.x - r * 0.28, head.y - r * 0.28, r * 0.12,
+    head.x, head.y, r
+  );
+  headGrad.addColorStop(0, 'rgba(255, 255, 255, 0.28)');
+  headGrad.addColorStop(0.55, 'rgba(255, 255, 255, 0)');
+  headGrad.addColorStop(1, 'rgba(0, 0, 0, 0.18)');
 
   lCtx.fillStyle = skin.colors[0];
+  lCtx.beginPath();
+  lCtx.arc(head.x, head.y, r, 0, Math.PI * 2);
+  lCtx.fill();
+
+  lCtx.fillStyle = headGrad;
   lCtx.beginPath();
   lCtx.arc(head.x, head.y, r, 0, Math.PI * 2);
   lCtx.fill();
@@ -290,12 +293,23 @@ function updateAndDrawLobbyWorm() {
     const ex = head.x + Math.cos(lobbyWorm.angle + offset) * eyeDist;
     const ey = head.y + Math.sin(lobbyWorm.angle + offset) * eyeDist;
     lCtx.fillStyle = '#fff';
+    lCtx.strokeStyle = 'rgba(15, 23, 42, 0.35)';
+    lCtx.lineWidth = 1;
     lCtx.beginPath();
-    lCtx.arc(ex, ey, r * 0.28, 0, Math.PI * 2);
+    lCtx.arc(ex, ey, r * 0.29, 0, Math.PI * 2);
     lCtx.fill();
+    lCtx.stroke();
+
+    const px = ex + Math.cos(lobbyWorm.angle) * (r * 0.11);
+    const py = ey + Math.sin(lobbyWorm.angle) * (r * 0.11);
     lCtx.fillStyle = '#111';
     lCtx.beginPath();
-    lCtx.arc(ex + Math.cos(lobbyWorm.angle) * (r * 0.11), ey + Math.sin(lobbyWorm.angle) * (r * 0.11), r * 0.14, 0, Math.PI * 2);
+    lCtx.arc(px, py, r * 0.15, 0, Math.PI * 2);
+    lCtx.fill();
+
+    lCtx.fillStyle = '#fff';
+    lCtx.beginPath();
+    lCtx.arc(px - r * 0.04, py - r * 0.04, r * 0.05, 0, Math.PI * 2);
     lCtx.fill();
   });
 }

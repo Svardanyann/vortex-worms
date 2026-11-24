@@ -21,11 +21,11 @@ window.addEventListener('resize', () => {
   }
 });
 
-// Place body segments densely along the head path and smooth curves to eliminate sharp kinks
+// Place body segments accurately along the recorded head path with no artificial flattening
 function updateSegmentsFromPath(worm) {
   const targetLen = calcTargetSegments(worm.score);
   const r = calcWormRadius(worm.score);
-  const segSpacing = Math.max(3.0, r * 0.25);
+  const segSpacing = Math.max(2.6, r * 0.22);
   if (!worm.path || worm.path.length === 0) {
     worm.path = [{ x: worm.x, y: worm.y }];
   }
@@ -56,16 +56,6 @@ function updateSegmentsFromPath(worm) {
     if (newSegs.length <= s) {
       const tailOrigin = worm.path[worm.path.length - 1];
       newSegs.push({ x: tailOrigin.x, y: tailOrigin.y });
-    }
-  }
-
-  // Light arc-smoothing pass so bends always form graceful curves instead of sharp corners
-  if (newSegs.length > 3) {
-    for (let pass = 0; pass < 2; pass++) {
-      for (let i = 1; i < newSegs.length - 1; i++) {
-        newSegs[i].x = newSegs[i].x * 0.5 + (newSegs[i - 1].x + newSegs[i + 1].x) * 0.25;
-        newSegs[i].y = newSegs[i].y * 0.5 + (newSegs[i - 1].y + newSegs[i + 1].y) * 0.25;
-      }
     }
   }
 
@@ -106,15 +96,13 @@ function updateWorm(worm, dt) {
     while (turnDiff > Math.PI) turnDiff -= Math.PI * 2;
     while (turnDiff < -Math.PI) turnDiff += Math.PI * 2;
 
-    // Smoothly damped angular velocity for natural rounded S-arcs and tight loop turns
-    const maxTurnRate = speed / (rHead * 1.15);
-    const desiredVel = Math.max(-maxTurnRate, Math.min(maxTurnRate, turnDiff * 10));
-    worm.turnVel = (worm.turnVel || 0) + (desiredVel - (worm.turnVel || 0)) * Math.min(1, dt * 16);
-    if (Math.abs(turnDiff) < Math.abs(worm.turnVel * dt)) {
+    // Immediate, crisp arc steering with natural turning radius (no sluggish lag)
+    const turnRadius = rHead * 1.32;
+    const maxStep = (speed / turnRadius) * dt;
+    if (Math.abs(turnDiff) <= maxStep) {
       worm.angle = pointerAngle;
-      worm.turnVel = 0;
     } else {
-      worm.angle += worm.turnVel * dt;
+      worm.angle += Math.sign(turnDiff) * maxStep;
     }
     sendMultiplayerInput();
   } else {
@@ -131,14 +119,12 @@ function updateWorm(worm, dt) {
     turnDiff = worm.aiTargetAngle - worm.angle;
     while (turnDiff > Math.PI) turnDiff -= Math.PI * 2;
     while (turnDiff < -Math.PI) turnDiff += Math.PI * 2;
-    const maxTurnRate = speed / (rHead * 1.55);
-    const desiredVel = Math.max(-maxTurnRate, Math.min(maxTurnRate, turnDiff * 10));
-    worm.turnVel = (worm.turnVel || 0) + (desiredVel - (worm.turnVel || 0)) * Math.min(1, dt * 16);
-    if (Math.abs(turnDiff) < Math.abs(worm.turnVel * dt)) {
+    const turnRadius = rHead * 1.75;
+    const maxStep = (speed / turnRadius) * dt;
+    if (Math.abs(turnDiff) <= maxStep) {
       worm.angle = worm.aiTargetAngle;
-      worm.turnVel = 0;
     } else {
-      worm.angle += worm.turnVel * dt;
+      worm.angle += Math.sign(turnDiff) * maxStep;
     }
   }
 
@@ -185,7 +171,7 @@ function updateWorm(worm, dt) {
   if (!worm.path || worm.path.length === 0) {
     worm.path = [{ x: worm.x, y: worm.y }];
   }
-  if (Math.hypot(worm.x - worm.path[0].x, worm.y - worm.path[0].y) >= 1.2) {
+  if (Math.hypot(worm.x - worm.path[0].x, worm.y - worm.path[0].y) >= 0.8) {
     worm.path.unshift({ x: worm.x, y: worm.y });
   } else {
     worm.path[0].x = worm.x;
@@ -279,6 +265,97 @@ function checkWormCollisions() {
   }
 }
 
+// Helper: trace a smooth quadratic spline through a range of segments
+function traceSmoothSpline(ctx, segs, startIdx, endIdx) {
+  if (endIdx < startIdx) return;
+  ctx.beginPath();
+  ctx.moveTo(segs[startIdx].x, segs[startIdx].y);
+  if (endIdx === startIdx) {
+    ctx.lineTo(segs[endIdx].x, segs[endIdx].y);
+    return;
+  }
+  for (let i = startIdx; i < endIdx; i++) {
+    const curr = segs[i];
+    const next = segs[i + 1];
+    const midX = (curr.x + next.x) * 0.5;
+    const midY = (curr.y + next.y) * 0.5;
+    ctx.quadraticCurveTo(curr.x, curr.y, midX, midY);
+  }
+  ctx.lineTo(segs[endIdx].x, segs[endIdx].y);
+}
+
+// Shared continuous 3D tubular worm body renderer (zero discrete-circle stepping on bends)
+function renderContinuousWormBody(ctx, segs, r, colors, isBoostingActive = false) {
+  const len = segs.length;
+  if (len === 0) return;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // 1. Boost outer golden aura
+  if (isBoostingActive) {
+    const pulse = 0.88 + 0.12 * Math.sin(performance.now() * 0.02);
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.28)';
+    ctx.lineWidth = (r + 5 * pulse) * 2;
+    traceSmoothSpline(ctx, segs, 0, len - 1);
+    ctx.stroke();
+  }
+
+  // 2. Soft ground drop shadow for 3D depth
+  ctx.save();
+  ctx.translate(0, r * 0.24);
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.24)';
+  ctx.lineWidth = r * 2.02;
+  traceSmoothSpline(ctx, segs, 0, len - 1);
+  ctx.stroke();
+  ctx.restore();
+
+  // 3. Subtle dark outline around entire continuous tube
+  ctx.strokeStyle = 'rgba(8, 16, 24, 0.45)';
+  ctx.lineWidth = r * 2 + 2.4;
+  traceSmoothSpline(ctx, segs, 0, len - 1);
+  ctx.stroke();
+
+  // 4. Base color fill across entire tube so seams never show
+  ctx.strokeStyle = colors[0];
+  ctx.lineWidth = r * 2;
+  traceSmoothSpline(ctx, segs, 0, len - 1);
+  ctx.stroke();
+
+  // 5. Smooth alternating color bands drawn from tail to head along the continuous spline
+  const bandStep = 3;
+  for (let end = len - 1; end > 0; end -= bandStep) {
+    const start = Math.max(0, end - bandStep);
+    const bandIdx = Math.floor(start / bandStep);
+    ctx.strokeStyle = colors[bandIdx % colors.length];
+    ctx.lineWidth = r * 2;
+    traceSmoothSpline(ctx, segs, start, end);
+    ctx.stroke();
+  }
+
+  // 6. Continuous glossy top-3D highlight along the spine
+  ctx.save();
+  ctx.translate(-r * 0.12, -r * 0.24);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+  ctx.lineWidth = r * 0.68;
+  traceSmoothSpline(ctx, segs, 0, len - 1);
+  ctx.stroke();
+  ctx.restore();
+
+  // 7. Gentle 2-segment rounded tail tip cap
+  if (len >= 2) {
+    const tail = segs[len - 1];
+    const tailColor = colors[Math.floor((len - 1) / bandStep) % colors.length];
+    ctx.fillStyle = tailColor;
+    ctx.beginPath();
+    ctx.arc(tail.x, tail.y, r * 0.92, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
 function drawWorm(worm) {
   const r = calcWormRadius(worm.score);
   const len = worm.segments.length;
@@ -303,20 +380,6 @@ function drawWorm(worm) {
     gCtx.restore();
   }
 
-  // Uniform outer golden glow behind body when boosting
-  if (worm.isBoostingActive) {
-    const pulse = 0.85 + 0.15 * Math.sin(performance.now() * 0.02);
-    gCtx.save();
-    gCtx.fillStyle = 'rgba(250, 204, 21, 0.24)';
-    for (let i = len - 1; i >= 0; i -= 2) {
-      const seg = worm.segments[i];
-      gCtx.beginPath();
-      gCtx.arc(seg.x, seg.y, r + 4.5 * pulse, 0, Math.PI * 2);
-      gCtx.fill();
-    }
-    gCtx.restore();
-  }
-
   if (worm.shieldTime > 0) {
     const blink = worm.shieldTime < 1.5 && Math.floor(worm.shieldTime * 10) % 2 === 0;
     gCtx.strokeStyle = blink ? '#facc15' : 'rgba(76, 201, 240, 0.75)';
@@ -326,24 +389,29 @@ function drawWorm(worm) {
     gCtx.stroke();
   }
 
-  // Smooth tubular body: uniform thickness with gentle 8-segment rounded tail tip
-  for (let i = len - 1; i >= 1; i--) {
-    const seg = worm.segments[i];
-    const distFromTail = len - 1 - i;
-    const tipScale = distFromTail < 8 ? (0.72 + (distFromTail / 8) * 0.28) : 1.0;
-    const segR = r * tipScale;
+  // Continuous smooth 3D tubular body
+  renderContinuousWormBody(gCtx, worm.segments, r, worm.colors, worm.isBoostingActive);
 
-    gCtx.fillStyle = worm.colors[Math.floor(i / 2) % worm.colors.length];
-    gCtx.beginPath();
-    gCtx.arc(seg.x, seg.y, segR, 0, Math.PI * 2);
-    gCtx.fill();
-  }
+  // 3D shaded head cap matching the tube seamlessly
+  const headGrad = gCtx.createRadialGradient(
+    worm.x - r * 0.28, worm.y - r * 0.28, r * 0.12,
+    worm.x, worm.y, r
+  );
+  headGrad.addColorStop(0, 'rgba(255, 255, 255, 0.28)');
+  headGrad.addColorStop(0.55, 'rgba(255, 255, 255, 0)');
+  headGrad.addColorStop(1, 'rgba(0, 0, 0, 0.18)');
 
   gCtx.fillStyle = worm.colors[0];
   gCtx.beginPath();
   gCtx.arc(worm.x, worm.y, r, 0, Math.PI * 2);
   gCtx.fill();
 
+  gCtx.fillStyle = headGrad;
+  gCtx.beginPath();
+  gCtx.arc(worm.x, worm.y, r, 0, Math.PI * 2);
+  gCtx.fill();
+
+  // Mouth
   const mx = worm.x + Math.cos(worm.angle) * (r * 0.66);
   const my = worm.y + Math.sin(worm.angle) * (r * 0.66);
   gCtx.save();
@@ -380,17 +448,29 @@ function drawWorm(worm) {
   }
   gCtx.restore();
 
+  // Expressive eyes with subtle rim and pupil shine
   const eyeDist = r * 0.42;
   [-0.58, 0.58].forEach(offset => {
     const ex = worm.x + Math.cos(worm.angle + offset) * eyeDist;
     const ey = worm.y + Math.sin(worm.angle + offset) * eyeDist;
     gCtx.fillStyle = '#fff';
+    gCtx.strokeStyle = 'rgba(15, 23, 42, 0.35)';
+    gCtx.lineWidth = 1;
     gCtx.beginPath();
-    gCtx.arc(ex, ey, r * 0.28, 0, Math.PI * 2);
+    gCtx.arc(ex, ey, r * 0.29, 0, Math.PI * 2);
     gCtx.fill();
+    gCtx.stroke();
+
+    const px = ex + Math.cos(worm.angle) * (r * 0.11);
+    const py = ey + Math.sin(worm.angle) * (r * 0.11);
     gCtx.fillStyle = '#111';
     gCtx.beginPath();
-    gCtx.arc(ex + Math.cos(worm.angle) * (r * 0.11), ey + Math.sin(worm.angle) * (r * 0.11), r * 0.14, 0, Math.PI * 2);
+    gCtx.arc(px, py, r * 0.15, 0, Math.PI * 2);
+    gCtx.fill();
+
+    gCtx.fillStyle = '#fff';
+    gCtx.beginPath();
+    gCtx.arc(px - r * 0.04, py - r * 0.04, r * 0.05, 0, Math.PI * 2);
     gCtx.fill();
   });
 
@@ -506,11 +586,10 @@ function gameLoop(now) {
       while (aDiff < -Math.PI) aDiff += Math.PI * 2;
       rw.angle += aDiff * lerp;
 
-      // Build remote body segments smoothly from head path (eliminates jitter)
       if (!rw.path || rw.path.length === 0) {
         rw.path = [{ x: rw.x, y: rw.y }];
       }
-      if (Math.hypot(rw.x - rw.path[0].x, rw.y - rw.path[0].y) >= 1.2) {
+      if (Math.hypot(rw.x - rw.path[0].x, rw.y - rw.path[0].y) >= 0.8) {
         rw.path.unshift({ x: rw.x, y: rw.y });
       } else {
         rw.path[0].x = rw.x;
