@@ -211,7 +211,7 @@ function activateOfflineMode() {
   mpAwaitingJoinAck = false;
   populateDenseFruits();
   bots = [];
-  for (let i = 0; i < 24; i++) bots.push(spawnBot());
+  for (let i = 0; i < 5; i++) bots.push(spawnBot());
 }
 
 function ensureSocketInitialized() {
