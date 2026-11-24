@@ -5,7 +5,7 @@ const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 3000;
 const ARENA_HALF = 4500;
-const TICK_RATE = 25;
+const TICK_RATE = 15;
 const FOOD_COUNT = 4000;
 const POWERUP_COUNT = 45;
 const BOT_COUNT = 10;
@@ -261,6 +261,7 @@ function createPlayer(id, name, colors, spawnHint = null) {
     score: 0,
     kills: 0,
     shield: 4.0,
+    age: 0,
     inventory: { magnet: 0, zoom: 0, freeBoost: 0 },
     effects: { magnet: 0, zoom: 0, freeBoost: 0 },
     path: pathPts,
@@ -519,6 +520,7 @@ function stepSimulation(dt) {
   const activePlayers = Array.from(players.values()).filter((p) => p.alive);
 
   for (const p of activePlayers) {
+    p.age = (p.age || 0) + dt;
     if (p.shield > 0) {
       p.shield = Math.max(0, p.shield - dt);
     }
@@ -542,7 +544,6 @@ function stepSimulation(dt) {
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
 
-    // Exact proportional arc radius so 180-deg turns touch cleanly without gaps
     const turnRadius = p.isBot ? (r * 1.65) : (r * 0.98);
     const maxStep = (speed / turnRadius) * dt;
     if (Math.abs(diff) <= maxStep) {
@@ -576,7 +577,6 @@ function stepSimulation(dt) {
 
     updatePlayerSegmentsFromPath(p);
 
-    // Collect powerup orbs
     const puEatR = r + 18;
     for (let i = powerups.length - 1; i >= 0; i--) {
       const pu = powerups[i];
@@ -645,20 +645,32 @@ function stepSimulation(dt) {
 
 function broadcastState() {
   tickCounter++;
+  // Send downsampled body segments only on spawn or every 3 seconds; client builds smooth body locally
+  const periodicSync = tickCounter % (TICK_RATE * 3) === 0;
+
   const snapshotPlayers = Array.from(players.values())
     .filter((p) => p.alive)
-    .map((p) => ({
-      id: p.id,
-      name: p.name,
-      colors: p.colors,
-      x: Math.round(p.x),
-      y: Math.round(p.y),
-      angle: Number(p.angle.toFixed(3)),
-      boosting: Boolean(p.isBoostingNow),
-      score: Math.floor(p.score),
-      shield: Number(p.shield.toFixed(1)),
-      segments: p.segments.map((s) => ({ x: Math.round(s.x), y: Math.round(s.y) }))
-    }));
+    .map((p) => {
+      const includeSegs = p.age < 1.2 || periodicSync;
+      const compactSegs = [];
+      if (includeSegs) {
+        for (let i = 0; i < p.segments.length; i += 3) {
+          compactSegs.push({ x: Math.round(p.segments[i].x), y: Math.round(p.segments[i].y) });
+        }
+      }
+      return {
+        id: p.id,
+        name: p.name,
+        colors: p.colors,
+        x: Math.round(p.x),
+        y: Math.round(p.y),
+        angle: Number(p.angle.toFixed(3)),
+        boosting: Boolean(p.isBoostingNow),
+        score: Math.floor(p.score),
+        shield: Number(p.shield.toFixed(1)),
+        segments: compactSegs
+      };
+    });
 
   const stateMsg = {
     type: 'state',
@@ -671,11 +683,8 @@ function broadcastState() {
   if (tickSpawnedFoods.length > 0) {
     stateMsg.spawned = tickSpawnedFoods;
   }
-  if (tickPowerupsDirty || tickCounter % 75 === 0) {
+  if (tickPowerupsDirty) {
     stateMsg.powerups = powerups;
-  }
-  if (tickCounter % 100 === 0) {
-    stateMsg.foodsFull = foods.map(packFood);
   }
 
   tickEatenIds = [];
@@ -696,7 +705,7 @@ maintainBots();
 let lastTime = Date.now();
 setInterval(() => {
   const now = Date.now();
-  const dt = Math.min(0.05, (now - lastTime) / 1000);
+  const dt = Math.min(0.06, (now - lastTime) / 1000);
   lastTime = now;
   stepSimulation(dt);
   broadcastState();
