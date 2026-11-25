@@ -34,21 +34,21 @@ const FRUITS = [
   { emoji: '🍉', val: 30, r: 15 }
 ];
 
-// Pre-render Static Illustrated Arena Tile once
+// Bright, clear, natural meadow-teal arena tile
 const arenaTile = document.createElement('canvas');
 arenaTile.width = 512;
 arenaTile.height = 512;
 const tCtx = arenaTile.getContext('2d');
 (function buildStaticArenaTile() {
-  tCtx.fillStyle = '#14362b';
+  tCtx.fillStyle = '#1f5747';
   tCtx.fillRect(0, 0, 512, 512);
 
   const shapes = [
-    { x: 90, y: 110, r: 75, c: '#194335' },
-    { x: 360, y: 140, r: 95, c: '#112e24' },
-    { x: 220, y: 340, r: 110, c: '#194335' },
-    { x: 430, y: 420, r: 65, c: '#1c4a3b' },
-    { x: 70, y: 430, r: 55, c: '#112e24' }
+    { x: 90, y: 110, r: 78, c: '#266855' },
+    { x: 360, y: 140, r: 96, c: '#1b4d3f' },
+    { x: 220, y: 340, r: 112, c: '#276b57' },
+    { x: 430, y: 420, r: 68, c: '#2a725d' },
+    { x: 70, y: 430, r: 58, c: '#1b4d3f' }
   ];
   shapes.forEach(s => {
     tCtx.fillStyle = s.c;
@@ -57,7 +57,7 @@ const tCtx = arenaTile.getContext('2d');
     tCtx.fill();
   });
 
-  tCtx.strokeStyle = 'rgba(255, 255, 255, 0.035)';
+  tCtx.strokeStyle = 'rgba(255, 255, 255, 0.055)';
   tCtx.lineWidth = 2;
   tCtx.strokeRect(1, 1, 510, 510);
   tCtx.beginPath();
@@ -72,7 +72,7 @@ const tCtx = arenaTile.getContext('2d');
     [130, 210], [290, 230], [440, 270],
     [60, 320], [210, 460], [350, 380], [480, 480]
   ];
-  tCtx.fillStyle = 'rgba(118, 200, 147, 0.12)';
+  tCtx.fillStyle = 'rgba(167, 243, 208, 0.16)';
   pebbles.forEach(([px, py]) => {
     tCtx.beginPath();
     tCtx.ellipse(px, py, 6, 3, 0.4, 0, Math.PI * 2);
@@ -87,9 +87,9 @@ let bots = [];
 let remoteWorms = [];
 let foods = [];
 let foodsById = new Map();
+let localCoins = [];
 let respawnQueue = [];
 let floatingTexts = [];
-let powerups = [];
 let isBoosting = false;
 let pointerAngle = 0;
 let lastCursorX = null;
@@ -129,6 +129,17 @@ let lastInputSentAt = 0;
 let lastSentAngle = null;
 let lastSentBoost = null;
 let offlineTimer = null;
+
+function updateGameCoinsHud(val) {
+  const el = document.getElementById('gameCoinsVal');
+  if (!el) return;
+  const str = String(Math.floor(val));
+  el.textContent = str;
+  if (str.length >= 6) el.style.fontSize = '9.5px';
+  else if (str.length === 5) el.style.fontSize = '10.5px';
+  else if (str.length === 4) el.style.fontSize = '11.5px';
+  else el.style.fontSize = '12.5px';
+}
 
 function isCapacitorEnv() {
   const { protocol, hostname } = window.location;
@@ -238,6 +249,7 @@ function ensureSocketInitialized() {
       mpAwaitingJoinAck = true;
       socket.send(JSON.stringify({
         type: 'join',
+        roomCode: activeRoomCode,
         name: state.name,
         colors: player.colors,
         x: Math.round(player.x),
@@ -250,9 +262,31 @@ function ensureSocketInitialized() {
   socket.addEventListener('message', (event) => {
     if (wsSocket !== socket) return;
     let msg;
-    try {
-      msg = JSON.parse(event.data);
-    } catch {
+    try { msg = JSON.parse(event.data); } catch { return; }
+
+    if (msg.type === 'room_created' || msg.type === 'room_ready') {
+      activeRoomCode = msg.roomCode;
+      isPrivateRoom = true;
+      closeModal('friendsModal');
+      startGame();
+      return;
+    }
+
+    if (msg.type === 'room_error') {
+      const t = I18N[state.lang] || I18N.hy;
+      if (msg.reason === 'code_taken') setRoomModalMessage(t.errCodeTaken, true);
+      else if (msg.reason === 'not_found') setRoomModalMessage(t.errNotFound, true);
+      else setRoomModalMessage(t.errInvalidCode, true);
+      return;
+    }
+
+    if (msg.type === 'room_peers') {
+      if (typeof handleRoomPeersList === 'function') handleRoomPeersList(msg.peers || []);
+      return;
+    }
+
+    if (msg.type === 'rtc_signal') {
+      if (typeof handleIncomingRtcSignal === 'function') handleIncomingRtcSignal(msg.from, msg.signal);
       return;
     }
 
@@ -262,10 +296,26 @@ function ensureSocketInitialized() {
       mpAwaitingJoinAck = false;
       lastSentAngle = null;
       lastSentBoost = null;
-      if (Array.isArray(msg.foods)) {
-        rebuildFoodList(msg.foods);
-      }
+      if (Array.isArray(msg.foods)) rebuildFoodList(msg.foods);
+      if (Array.isArray(msg.coins)) localCoins = msg.coins;
+      if (typeof updateVoiceButtonsUI === 'function') updateVoiceButtonsUI();
       sendMultiplayerInput(true);
+    } else if (msg.type === 'coin_picked') {
+      const amt = msg.amount || 1;
+      state.coins += amt;
+      saveState();
+      updateGameCoinsHud(state.coins);
+      document.getElementById('lobbyCoins').textContent = state.coins;
+      playTone(840, 'triangle', 0.14, 0.08);
+      if (player) {
+        floatingTexts.push({
+          x: msg.x ?? player.x,
+          y: (msg.y ?? player.y) - 14,
+          text: `+${amt} 🪙`,
+          alpha: 1.0,
+          color: '#fef08a'
+        });
+      }
     } else if (msg.type === 'state') {
       if (!inGame || !player || mpAwaitingJoinAck) return;
 
@@ -273,15 +323,14 @@ function ensureSocketInitialized() {
         rebuildFoodList(msg.foodsFull);
       } else {
         if (Array.isArray(msg.eaten)) {
-          for (let i = 0; i < msg.eaten.length; i++) {
-            removeFoodById(msg.eaten[i]);
-          }
+          for (let i = 0; i < msg.eaten.length; i++) removeFoodById(msg.eaten[i]);
         }
         if (Array.isArray(msg.spawned)) {
-          for (let i = 0; i < msg.spawned.length; i++) {
-            addFoodTuple(msg.spawned[i]);
-          }
+          for (let i = 0; i < msg.spawned.length; i++) addFoodTuple(msg.spawned[i]);
         }
+      }
+      if (Array.isArray(msg.coins)) {
+        localCoins = msg.coins;
       }
 
       if (Array.isArray(msg.players)) {
@@ -325,9 +374,7 @@ function ensureSocketInitialized() {
           } else {
             const prev = prevRemoteMap.get(sp.id);
             let mouthTimer = prev ? (prev.mouthTimer || 0) : 0;
-            if (prev && sp.score > prev.score + 1) {
-              mouthTimer = 0.28;
-            }
+            if (prev && sp.score > prev.score + 1) mouthTimer = 0.28;
             const initialPath = (sp.segments && sp.segments.length > 0)
               ? sp.segments.map(s => ({ x: s.x, y: s.y }))
               : [{ x: sp.x, y: sp.y }];
@@ -394,9 +441,7 @@ function connectMultiplayer(skinColors) {
   }
 
   offlineTimer = setTimeout(() => {
-    if (!mpConnected && inGame) {
-      activateOfflineMode();
-    }
+    if (!mpConnected && inGame) activateOfflineMode();
   }, 4500);
 
   try {
@@ -408,6 +453,7 @@ function connectMultiplayer(skinColors) {
       bots = [];
       socket.send(JSON.stringify({
         type: 'respawn',
+        roomCode: activeRoomCode,
         name: state.name,
         colors: skinColors,
         x: Math.round(player.x),
@@ -453,24 +499,29 @@ function createFruitItem(x, y) {
   const fIdx = Math.floor(Math.pow(Math.random(), 1.25) * FRUITS.length);
   const t = Math.min(FRUITS.length - 1, fIdx);
   const spec = FRUITS[t];
-  return { x, y, t, emoji: spec.emoji, val: spec.val, r: spec.r };
+  return { id: Math.random(), x, y, t, emoji: spec.emoji, val: spec.val, r: spec.r };
 }
 
 function populateDenseFruits() {
   foods = [];
   foodsById.clear();
   respawnQueue = [];
-  const clusterCount = 1350;
-  for (let c = 0; c < clusterCount; c++) {
-    const center = randomPointInSquareArena(160);
-    const itemsInCluster = 2 + Math.floor(Math.random() * 3);
-    for (let k = 0; k < itemsInCluster; k++) {
-      const ox = center.x + (Math.random() - 0.5) * 44;
-      const oy = center.y + (Math.random() - 0.5) * 44;
-      if (Math.abs(ox) < ARENA_HALF - 80 && Math.abs(oy) < ARENA_HALF - 80) {
-        foods.push(createFruitItem(ox, oy));
+  const grid = 6;
+  const span = (ARENA_HALF * 2) / grid;
+  for (let gx = 0; gx < grid; gx++) {
+    for (let gy = 0; gy < grid; gy++) {
+      const count = 45 + Math.floor(Math.random() * 25);
+      for (let k = 0; k < count; k++) {
+        const fx = -ARENA_HALF + gx * span + 30 + Math.random() * (span - 60);
+        const fy = -ARENA_HALF + gy * span + 30 + Math.random() * (span - 60);
+        foods.push(createFruitItem(fx, fy));
       }
     }
+  }
+  localCoins = [];
+  for (let c = 0; c < 8; c++) {
+    const p = randomPointInSquareArena(260);
+    localCoins.push({ id: c + 1, x: p.x, y: p.y, val: 1 });
   }
 }
 
@@ -539,9 +590,7 @@ function showKillToast() {
   toast.className = 'kill-toast';
   toast.textContent = I18N[state.lang].wormDefeated;
   container.appendChild(toast);
-  setTimeout(() => {
-    toast.remove();
-  }, 2250);
+  setTimeout(() => toast.remove(), 2250);
 }
 
 function resetTouchControls() {
@@ -600,20 +649,14 @@ function startGame() {
   mpAwaitingJoinAck = true;
 
   floatingTexts = [];
-  powerups = [];
   bots = [];
   remoteWorms = [];
 
   connectMultiplayer(skin.colors);
 
-  document.getElementById('gameCoinsVal').textContent = state.coins;
+  updateGameCoinsHud(state.coins);
   document.getElementById('shieldNotice').style.display = 'none';
-
-  // Hide redundant top score HUD (score is shown in leaderboard on the right)
-  const scoreValEl = document.getElementById('scoreVal');
-  if (scoreValEl && scoreValEl.parentElement) {
-    scoreValEl.parentElement.style.display = 'none';
-  }
+  if (typeof updateVoiceButtonsUI === 'function') updateVoiceButtonsUI();
 
   restartBgMusicForMatch();
 
@@ -626,6 +669,9 @@ function exitToLobby() {
   clearAwayTimer();
   inGame = false;
   musicPausedByGameOver = false;
+  activeRoomCode = 'PUBLIC';
+  isPrivateRoom = false;
+  if (typeof stopVoiceChat === 'function') stopVoiceChat();
   resetTouchControls();
   disconnectMultiplayer();
   document.body.classList.remove('in-game');
@@ -633,10 +679,10 @@ function exitToLobby() {
   document.getElementById('gameContainer').style.display = 'none';
   document.getElementById('gameOverScreen').style.display = 'none';
   document.getElementById('lobbyScreen').style.display = 'block';
+  if (typeof updatePowerupHudBar === 'function') updatePowerupHudBar();
   updateUI();
 }
 
-// 1st Finger = Floating Joystick | 2nd Finger = Instant Boost | Single-Finger Double-Tap = Joystick + Boost
 gameCanvas.addEventListener('pointerdown', (e) => {
   if (!inGame || !player) return;
   if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -679,9 +725,7 @@ window.addEventListener('pointermove', (e) => {
 
   if (pendingTaps.has(e.pointerId)) {
     const tap = pendingTaps.get(e.pointerId);
-    if (Math.hypot(e.clientX - tap.downX, e.clientY - tap.downY) > 28) {
-      tap.moved = true;
-    }
+    if (Math.hypot(e.clientX - tap.downX, e.clientY - tap.downY) > 28) tap.moved = true;
   }
 
   if (e.pointerId === joyPointerId) {
@@ -758,7 +802,11 @@ window.addEventListener('keyup', (e) => {
   }
 });
 
-document.getElementById('startGameBtn').addEventListener('click', startGame);
+document.getElementById('startGameBtn').addEventListener('click', () => {
+  activeRoomCode = 'PUBLIC';
+  isPrivateRoom = false;
+  startGame();
+});
 document.getElementById('playAgainBtn').addEventListener('click', startGame);
 document.getElementById('goLobbyBtn').addEventListener('click', exitToLobby);
 const gameFsBtnEl = document.getElementById('gameFsBtn');
@@ -787,6 +835,8 @@ function killWorm(worm, allWorms, killer = null) {
     stopBgMusic();
     playTone(150, 'sawtooth', 0.35, 0.12);
     inGame = false;
+    if (typeof updatePowerupHudBar === 'function') updatePowerupHudBar();
+    if (typeof updateVoiceButtonsUI === 'function') updateVoiceButtonsUI();
     if (gameAnimId) {
       cancelAnimationFrame(gameAnimId);
       gameAnimId = null;
@@ -821,7 +871,7 @@ function killWorm(worm, allWorms, killer = null) {
   }
 }
 
-/// ================= 5-SECOND BACKGROUND / INACTIVE KILL TIMER =================
+// ================= 5-SECOND BACKGROUND / INACTIVE KILL TIMER =================
 let awayKillTimer = null;
 let awayStartedAt = 0;
 
@@ -839,14 +889,9 @@ function executeAwayKill() {
 
 function startAwayTimer() {
   if (!inGame || !player) return;
-  // Ignore button-click focus loss during the first 600ms of match start
   if (performance.now() - lastStartAt < 600) return;
-  if (!awayStartedAt) {
-    awayStartedAt = Date.now();
-  }
-  if (!awayKillTimer) {
-    awayKillTimer = setTimeout(executeAwayKill, 5000);
-  }
+  if (!awayStartedAt) awayStartedAt = Date.now();
+  if (!awayKillTimer) awayKillTimer = setTimeout(executeAwayKill, 5000);
 }
 
 function clearAwayTimer() {
@@ -862,17 +907,8 @@ function clearAwayTimer() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    startAwayTimer();
-  } else {
-    clearAwayTimer();
-  }
+  if (document.hidden) startAwayTimer();
+  else clearAwayTimer();
 });
-
-window.addEventListener('blur', () => {
-  startAwayTimer();
-});
-
-window.addEventListener('focus', () => {
-  clearAwayTimer();
-});
+window.addEventListener('blur', startAwayTimer);
+window.addEventListener('focus', clearAwayTimer);

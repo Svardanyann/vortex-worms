@@ -4,16 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Vortex Worms</title>
-    <link rel="stylesheet" href="base.css?v=2">
-    <link rel="stylesheet" href="lobby.css?v=2">
-    <link rel="stylesheet" href="modals.css?v=2">
-    <link rel="stylesheet" href="game.css?v=2">
+    <link rel="stylesheet" href="base.css?v=3">
+    <link rel="stylesheet" href="lobby.css?v=3">
+    <link rel="stylesheet" href="modals.css?v=3">
+    <link rel="stylesheet" href="game.css?v=3">
 </head>
 <body>
 
 <div id="rotateHint">Խաղալու համար թեքեք հեռախոսը կողքի</div>
 
-    <!-- LOBBY BACKGROUND & INTERACTIVE WORM CANVAS -->
+<!-- LOBBY BACKGROUND & INTERACTIVE WORM CANVAS -->
 <canvas id="lobbyCanvas"></canvas>
 
 <!-- LOBBY FOREGROUND UI -->
@@ -36,7 +36,7 @@
   <!-- Top Right: Coins -->
   <div class="top-right-bar">
     <div class="coin-pill">
-      <span class="coin-icon"><svg width="18" height="18" viewBox="0 0 24 24" style="vertical-align:-3px;"><defs><radialGradient id="gCoin1" cx="35%" cy="30%" r="70%"><stop offset="0%" stop-color="#fef08a"/><stop offset="55%" stop-color="#facc15"/><stop offset="100%" stop-color="#b45309"/></radialGradient></defs><circle cx="12" cy="12" r="10.5" fill="url(#gCoin1)" stroke="#fde047" stroke-width="1.5"/><circle cx="12" cy="12" r="7" fill="none" stroke="#92400e" stroke-width="1.2" opacity="0.65"/><ellipse cx="9" cy="8" rx="2.5" ry="1.4" transform="rotate(-30 9 8)" fill="#fff" opacity="0.65"/></svg></span>
+      <span class="coin-icon" id="lobbyCoinSvgWrap"></span>
       <span class="coin-val" id="lobbyCoins">250</span>
       <button class="plus-btn ui-btn" id="addFreeCoinsBtn">+</button>
     </div>
@@ -59,15 +59,18 @@
   </div>
 
   <!-- Center Logo -->
-<div class="center-logo">
-  <div class="logo-title">VORTEX</div>
-  <div class="logo-sub" id="logoSubText">WORMS</div>
-</div>
+  <div class="center-logo">
+    <div class="logo-title">VORTEX</div>
+    <div class="logo-sub" id="logoSubText">WORMS</div>
+  </div>
 
-  <!-- Bottom Center Main Play & Workshop -->
+  <!-- Bottom Center Main Play, Friends & Workshop -->
   <div class="bottom-center-controls">
     <button class="play-main-btn ui-btn" id="startGameBtn">ՄԱՐՏԻ՛</button>
-    <button class="workshop-btn ui-btn" id="openShopBtn">Արհեստանոց</button>
+    <div class="lobby-secondary-row">
+      <button class="friends-room-btn ui-btn" id="openFriendsBtn">👥 Ընկերներով</button>
+      <button class="workshop-btn ui-btn" id="openShopBtn">Արհեստանոց</button>
+    </div>
     <div class="hint-caption" id="lobbyHintText">Սեղմիր ցանկացած տեղ կամ բռնիր որդիկին</div>
   </div>
 
@@ -79,6 +82,7 @@
 
   <!-- Bottom Right Tools -->
   <div class="bottom-right-tools">
+    <button class="square-tool-btn green ui-btn" id="shareGameBtn" title="Հրավիրել ընկերներին">📤</button>
     <button class="square-tool-btn orange ui-btn" id="openSettingsBtn" title="Կարգավորումներ">⚙️</button>
   </div>
 </div>
@@ -113,6 +117,36 @@
   </div>
 </div>
 
+<!-- MODAL: FRIENDS PRIVATE ROOM -->
+<div class="modal-backdrop" id="friendsModal">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title" id="friendsModalTitle">Խաղալ ընկերների հետ</div>
+      <button class="close-modal-btn ui-btn" data-close="friendsModal">✕</button>
+    </div>
+    <div class="modal-body" style="gap:10px;">
+      <div class="room-box">
+        <div class="room-box-title" id="createRoomTitle">1. Ստեղծել փակ սենյակ (5 թիվ)</div>
+        <div class="room-input-row">
+          <input type="text" id="createRoomCodeInput" class="input-field room-code-input" maxlength="5" inputmode="numeric" placeholder="12345">
+          <button class="hud-mini-btn" id="randomRoomCodeBtn" title="Պատահական">🎲</button>
+          <button class="play-main-btn ui-btn room-go-btn" id="createRoomSubmitBtn">Ստեղծել</button>
+        </div>
+      </div>
+
+      <div class="room-box">
+        <div class="room-box-title" id="joinRoomTitle">2. Միանալ սենյակին կոդով</div>
+        <div class="room-input-row">
+          <input type="text" id="joinRoomCodeInput" class="input-field room-code-input" maxlength="5" inputmode="numeric" placeholder="12345">
+          <button class="play-main-btn ui-btn room-go-btn" id="joinRoomSubmitBtn" style="background:linear-gradient(180deg,#38bdf8,#0284c7);">Մտնել</button>
+        </div>
+      </div>
+
+      <div id="roomStatusMsg" class="room-status-msg"></div>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: SETTINGS -->
 <div class="modal-backdrop" id="settingsModal">
   <div class="modal-card">
@@ -121,9 +155,19 @@
       <button class="close-modal-btn ui-btn" data-close="settingsModal">✕</button>
     </div>
     <div class="modal-body">
-      <div class="setting-row">
-        <span id="soundSettingLabel" style="font-weight:800;">Ձայն և Երաժշտություն</span>
-        <button class="hud-mini-btn" id="toggleSoundSettingBtn">🔊 Միացված</button>
+      <div class="setting-col">
+        <div class="setting-slider-head">
+          <span id="musicSettingLabel" style="font-weight:800;">🎵 Երգի ձայնը</span>
+          <span id="musicVolVal" class="vol-pct">100%</span>
+        </div>
+        <input type="range" id="musicVolSlider" class="vol-slider" min="0" max="100" value="100">
+      </div>
+      <div class="setting-col">
+        <div class="setting-slider-head">
+          <span id="sfxSettingLabel" style="font-weight:800;">🔊 Խաղի ձայները</span>
+          <span id="sfxVolVal" class="vol-pct">100%</span>
+        </div>
+        <input type="range" id="sfxVolSlider" class="vol-slider" min="0" max="100" value="100">
       </div>
       <div class="setting-row">
         <span id="langSettingLabel" style="font-weight:800;">Լեզու / Language</span>
@@ -152,9 +196,18 @@
 <div id="gameContainer">
   <canvas id="gameCanvas"></canvas>
 
-  <div class="hud-top-left">
-    <div><span id="hudScoreLabel">Միավոր</span>: <span id="scoreVal" style="color:#ffd166;">0</span></div>
-    <div><span id="hudCoinsLabel">Մետաղադրամ</span>: <span id="gameCoinsVal" style="color:#80ed99;">250</span> <svg width="15" height="15" viewBox="0 0 24 24" style="vertical-align:-2px;"><defs><radialGradient id="gCoin2" cx="35%" cy="30%" r="70%"><stop offset="0%" stop-color="#fef08a"/><stop offset="55%" stop-color="#facc15"/><stop offset="100%" stop-color="#b45309"/></radialGradient></defs><circle cx="12" cy="12" r="10.5" fill="url(#gCoin2)" stroke="#fde047" stroke-width="1.5"/><circle cx="12" cy="12" r="7" fill="none" stroke="#92400e" stroke-width="1.2" opacity="0.65"/><ellipse cx="9" cy="8" rx="2.5" ry="1.4" transform="rotate(-30 9 8)" fill="#fff" opacity="0.65"/></svg></div>
+  <!-- Compact Coin Pill aligned directly above 68px Minimap -->
+  <div id="gameCoinsPill" class="game-coins-pill">
+    <span id="gameCoinSvgWrap" class="game-coin-svg"></span>
+    <span id="gameCoinsVal">250</span>
+  </div>
+
+  <!-- Private Room Voice Bar (Mic & Speaker only) -->
+  <div id="voiceBar" class="voice-bar" style="display:none;">
+    <span id="activeRoomBadge" class="room-code-badge">#00000</span>
+    <button type="button" class="voice-btn" id="toggleMicBtn" title="Միկրոֆոն">🎤</button>
+    <button type="button" class="voice-btn" id="toggleSpeakerBtn" title="Ընկերների ձայնը">🔊</button>
+    <button type="button" class="voice-btn share" id="inviteRoomBtn" title="Հրավիրել սենյակ">📤</button>
   </div>
 
   <div id="activeEffects"></div>
@@ -185,9 +238,10 @@
   </div>
 </div>
 
-    <script src="i18n.js?v=2"></script>
-    <script src="lobby.js?v=2"></script>
-    <script src="engine.js?v=2"></script>
-    <script src="gameLoop.js?v=2"></script>
+<script src="i18n.js?v=3"></script>
+<script src="lobby.js?v=3"></script>
+<script src="rooms.js?v=3"></script>
+<script src="engine.js?v=3"></script>
+<script src="gameLoop.js?v=3"></script>
 </body>
 </html>

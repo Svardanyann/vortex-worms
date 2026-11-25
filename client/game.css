@@ -1,4 +1,4 @@
-/* ================= IN-GAME HUD ================= */
+/* ================= IN-GAME HUD & NEW CONTROLS ================= */
 #gameContainer {
   position: fixed;
   inset: 0;
@@ -6,22 +6,196 @@
   z-index: 20;
 }
 
-.hud-top-left {
+/* Coin pill aligned strictly to minimap width (68px at left:14px) */
+.game-coins-pill {
   position: fixed;
-  top: 10px;
-  left: 10px;
-  background: rgba(15, 25, 40, 0.28);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 12px;
-  padding: 6px 11px;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 800;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  top: 12px;
+  left: 14px;
+  width: 68px;
+  height: 28px;
+  box-sizing: border-box;
+  background: rgba(10, 20, 35, 0.56);
+  border: 1.2px solid rgba(250, 204, 21, 0.45);
+  border-radius: 9px;
+  padding: 0 5px;
+  color: #fef08a;
+  font-weight: 900;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
   pointer-events: none;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
   gap: 3px;
+  overflow: hidden;
+  z-index: 24;
+}
+
+.game-coin-svg {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+#gameCoinsVal {
+  flex: 1;
+  text-align: right;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Private Room Voice Controls */
+.voice-bar {
+  position: fixed;
+  top: 12px;
+  left: 92px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(10, 20, 35, 0.56);
+  border: 1.2px solid rgba(255, 255, 255, 0.24);
+  border-radius: 11px;
+  padding: 4px 8px;
+  z-index: 26;
+  pointer-events: auto;
+}
+
+.room-code-badge {
+  font-size: 11px;
+  font-weight: 900;
+  color: #38bdf8;
+  padding-right: 4px;
+  letter-spacing: 0.4px;
+}
+
+.voice-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  background: rgba(16, 185, 129, 0.78);
+  color: #fff;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.voice-btn.muted {
+  background: rgba(239, 68, 68, 0.78);
+  border-color: rgba(254, 202, 202, 0.6);
+}
+
+.voice-btn.share {
+  background: rgba(59, 130, 246, 0.8);
+}
+
+/* Lobby Friends Button & Share Button */
+.lobby-secondary-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.friends-room-btn {
+  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+  color: #fff;
+  border: 2px solid #bae6fd;
+  border-radius: 16px;
+  padding: 9px 15px;
+  font-size: 15px;
+  font-weight: 900;
+  box-shadow: 0 4px 0 #0369a1, 0 6px 14px rgba(0, 0, 0, 0.28);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.square-tool-btn.green {
+  background: linear-gradient(180deg, #34d399 0%, #059669 100%);
+  border-color: #a7f3d0;
+  box-shadow: 0 4px 0 #047857, 0 6px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Settings Volume Sliders */
+.setting-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.45);
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.setting-slider-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+
+.vol-pct {
+  color: #ffd166;
+  font-weight: 900;
+  font-size: 13px;
+}
+
+.vol-slider {
+  width: 100%;
+  accent-color: #38bdf8;
+  cursor: pointer;
+  height: 6px;
+}
+
+/* Friends Room Modal */
+.room-box {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.room-box-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffd166;
+}
+
+.room-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.room-code-input {
+  flex: 1;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  padding: 8px;
+}
+
+.room-go-btn {
+  font-size: 15px !important;
+  padding: 9px 14px !important;
+  white-space: nowrap;
+}
+
+.room-status-msg {
+  min-height: 20px;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  color: #fca5a5;
 }
 
 .hud-top-right {
@@ -41,11 +215,11 @@
 }
 
 .hud-mini-btn {
-  background: rgba(15, 25, 40, 0.32);
+  background: rgba(15, 25, 40, 0.38);
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 10px;
-  padding: 5px 9px;
+  padding: 6px 10px;
   font-size: 12px;
   font-weight: 800;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
@@ -53,13 +227,13 @@
 }
 
 .hud-mini-btn:active {
-  background: rgba(15, 25, 40, 0.55);
+  background: rgba(15, 25, 40, 0.6);
   transform: scale(0.95);
 }
 
 .leaderboard-box {
-  background: rgba(15, 25, 40, 0.28);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(15, 25, 40, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 12px;
   padding: 6px 10px;
   color: #fff;
@@ -100,8 +274,8 @@
 
 #activeEffects {
   position: fixed;
-  top: 68px;
-  left: 10px;
+  top: 125px;
+  left: 14px;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -109,7 +283,7 @@
 }
 
 .effect-badge {
-  background: rgba(15, 25, 40, 0.38);
+  background: rgba(15, 25, 40, 0.42);
   border: 1px solid rgba(255, 209, 102, 0.65);
   color: #fff;
   padding: 3px 9px;
@@ -119,37 +293,12 @@
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
 
-#boostBtn {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 190, 11, 0.52), rgba(251, 86, 7, 0.52));
-  border: 2px solid rgba(255, 255, 255, 0.55);
-  color: rgba(255, 255, 255, 0.92);
-  font-weight: 900;
-  font-size: 13px;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  touch-action: none;
-  cursor: pointer;
-  z-index: 25;
-}
-
-#boostBtn:active {
-  background: radial-gradient(circle, rgba(255, 190, 11, 0.88), rgba(251, 86, 7, 0.88));
-  border-color: #fff;
-  transform: scale(0.92);
-}
-
 #shieldNotice {
   position: fixed;
   top: 20%;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(230, 57, 70, 0.72);
+  background: rgba(230, 57, 70, 0.78);
   color: #fff;
   padding: 6px 16px;
   border-radius: 12px;
@@ -162,10 +311,9 @@
   z-index: 25;
 }
 
-/* Bottom Arena Kill Banner */
 #killToastContainer {
   position: fixed;
-  bottom: 24px;
+  bottom: 76px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -177,7 +325,7 @@
 }
 
 .kill-toast {
-  background: linear-gradient(90deg, rgba(16, 185, 129, 0.72), rgba(5, 150, 105, 0.72));
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.78), rgba(5, 150, 105, 0.78));
   color: #fff;
   border: 1px solid rgba(255, 209, 102, 0.75);
   padding: 6px 16px;
@@ -196,7 +344,6 @@
   100% { opacity: 0; transform: translateY(-14px) scale(0.96); }
 }
 
-/* Game Over Overlay */
 #gameOverScreen {
   position: fixed;
   inset: 0;

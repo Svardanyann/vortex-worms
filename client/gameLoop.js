@@ -1,13 +1,16 @@
 // ================= GAME LOOP & RENDERING =================
+// Pre-render bright, crisp fruit sprites with subtle outer glow for natural vividness
 const fruitSprites = FRUITS.map((spec) => {
-  const size = Math.ceil(spec.r * 2.8);
+  const size = Math.ceil(spec.r * 3.1);
   const c = document.createElement('canvas');
   c.width = size;
   c.height = size;
   const ctx = c.getContext('2d');
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `${Math.round(spec.r * 2.1)}px Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif`;
+  ctx.shadowColor = 'rgba(255, 255, 255, 0.35)';
+  ctx.shadowBlur = 5;
+  ctx.font = `${Math.round(spec.r * 2.15)}px Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif`;
   ctx.fillText(spec.emoji, size / 2, size / 2 + 1);
   return c;
 });
@@ -45,20 +48,15 @@ const POWERUP_SPECS = {
 };
 
 const POWERUP_DURATION = 12.0;
-const OFFLINE_POWERUP_COUNT = 45;
+const OFFLINE_POWERUP_COUNT = 52;
+const OFFLINE_POWERUP_POOL = ['magnet', 'magnet', 'magnet', 'zoom', 'freeBoost'];
 let localPowerups = [];
 let playerPowerupInv = { magnet: 0, zoom: 0, freeBoost: 0 };
 
 function createLocalPowerup() {
-  const keys = Object.keys(POWERUP_SPECS);
-  const type = keys[Math.floor(Math.random() * keys.length)];
+  const type = OFFLINE_POWERUP_POOL[Math.floor(Math.random() * OFFLINE_POWERUP_POOL.length)];
   const pos = randomPointInSquareArena(260);
-  return {
-    id: Math.random(),
-    x: pos.x,
-    y: pos.y,
-    type
-  };
+  return { id: Math.random(), x: pos.x, y: pos.y, type };
 }
 
 function ensureLocalPowerups() {
@@ -209,8 +207,8 @@ function activatePlayerPowerup(type) {
   playTone(680, 'triangle', 0.12, 0.07);
 
   if (typeof mpConnected !== 'undefined' && mpConnected && typeof wsSocket !== 'undefined' && wsSocket && wsSocket.readyState === 1) {
-  wsSocket.send(JSON.stringify({ type: 'use_powerup', powerup: type }));
-}
+    wsSocket.send(JSON.stringify({ type: 'use_powerup', powerup: type }));
+  }
 
   const spec = POWERUP_SPECS[type];
   floatingTexts.push({
@@ -244,9 +242,7 @@ function updatePowerupHudBar() {
     btn.classList.toggle('empty', count <= 0 && rem <= 0);
     btn.classList.toggle('active-effect', rem > 0);
 
-    if (rem > 0) {
-      timerEl.textContent = `${Math.ceil(rem)}s`;
-    }
+    if (rem > 0) timerEl.textContent = `${Math.ceil(rem)}s`;
   });
 }
 
@@ -257,7 +253,6 @@ window.addEventListener('keydown', (e) => {
   if (e.key === '3') activatePlayerPowerup('freeBoost');
 });
 
-// Hook into multiplayer messages seamlessly if mpSocket exists
 let hookedMpSocket = null;
 function syncMultiplayerPowerupHook() {
   if (typeof wsSocket === 'undefined' || !wsSocket || wsSocket === hookedMpSocket) return;
@@ -267,18 +262,12 @@ function syncMultiplayerPowerupHook() {
       const msg = JSON.parse(ev.data);
       if (msg.type === 'joined') {
         playerPowerupInv = { magnet: 0, zoom: 0, freeBoost: 0 };
-        if (Array.isArray(msg.powerups)) {
-          localPowerups = msg.powerups;
-        }
+        if (Array.isArray(msg.powerups)) localPowerups = msg.powerups;
       } else if (msg.type === 'state' && Array.isArray(msg.powerups)) {
         localPowerups = msg.powerups;
       } else if (msg.type === 'powerup_state') {
-        if (msg.inventory) {
-          playerPowerupInv = { ...playerPowerupInv, ...msg.inventory };
-        }
-        if (msg.effects && player && player.effects) {
-          Object.assign(player.effects, msg.effects);
-        }
+        if (msg.inventory) playerPowerupInv = { ...playerPowerupInv, ...msg.inventory };
+        if (msg.effects && player && player.effects) Object.assign(player.effects, msg.effects);
         if (msg.picked && player) {
           playTone(620, 'sine', 0.08, 0.06);
           const spec = POWERUP_SPECS[msg.picked];
@@ -291,10 +280,57 @@ function syncMultiplayerPowerupHook() {
           });
         }
       }
-    } catch {
-      // ignore non-json
-    }
+    } catch {}
   });
+}
+
+function drawArenaCoins(viewW, viewH, now) {
+  if (!localCoins || localCoins.length === 0) return;
+  const spin = Math.cos(now * 0.005);
+  const scaleX = Math.max(0.32, Math.abs(spin));
+  for (let i = 0; i < localCoins.length; i++) {
+    const c = localCoins[i];
+    if (Math.abs(c.x - player.x) > viewW || Math.abs(c.y - player.y) > viewH) continue;
+
+    gCtx.save();
+    gCtx.translate(c.x, c.y);
+
+    const aura = gCtx.createRadialGradient(0, 0, 2, 0, 0, 22);
+    aura.addColorStop(0, 'rgba(250, 204, 21, 0.52)');
+    aura.addColorStop(1, 'rgba(250, 204, 21, 0)');
+    gCtx.fillStyle = aura;
+    gCtx.beginPath();
+    gCtx.arc(0, 0, 22, 0, Math.PI * 2);
+    gCtx.fill();
+
+    gCtx.scale(scaleX, 1);
+    const coinGrad = gCtx.createRadialGradient(-4, -4, 1, 0, 0, 12);
+    coinGrad.addColorStop(0, '#fef9c3');
+    coinGrad.addColorStop(0.55, '#facc15');
+    coinGrad.addColorStop(1, '#b45309');
+
+    gCtx.fillStyle = coinGrad;
+    gCtx.strokeStyle = '#fef08a';
+    gCtx.lineWidth = 1.6;
+    gCtx.beginPath();
+    gCtx.arc(0, 0, 11.5, 0, Math.PI * 2);
+    gCtx.fill();
+    gCtx.stroke();
+
+    gCtx.strokeStyle = '#78350f';
+    gCtx.lineWidth = 1.1;
+    gCtx.beginPath();
+    gCtx.arc(0, 0, 8, 0, Math.PI * 2);
+    gCtx.stroke();
+
+    gCtx.fillStyle = '#fef9c3';
+    gCtx.font = '900 11px Segoe UI';
+    gCtx.textAlign = 'center';
+    gCtx.textBaseline = 'middle';
+    gCtx.fillText('★', 0, 0.5);
+
+    gCtx.restore();
+  }
 }
 
 function drawPowerupOrbs(viewW, viewH, now) {
@@ -308,7 +344,6 @@ function drawPowerupOrbs(viewW, viewH, now) {
     const orbR = 16 * pulse;
     gCtx.save();
 
-    // Glowing aura
     const grad = gCtx.createRadialGradient(pu.x, pu.y, 2, pu.x, pu.y, orbR * 1.65);
     grad.addColorStop(0, spec.glow);
     grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
@@ -317,8 +352,7 @@ function drawPowerupOrbs(viewW, viewH, now) {
     gCtx.arc(pu.x, pu.y, orbR * 1.65, 0, Math.PI * 2);
     gCtx.fill();
 
-    // Orb circle
-    gCtx.fillStyle = 'rgba(10, 22, 36, 0.88)';
+    gCtx.fillStyle = 'rgba(12, 28, 42, 0.88)';
     gCtx.strokeStyle = spec.color;
     gCtx.lineWidth = 2.4;
     gCtx.beginPath();
@@ -326,7 +360,6 @@ function drawPowerupOrbs(viewW, viewH, now) {
     gCtx.fill();
     gCtx.stroke();
 
-    // Crisp vector icon inside orb
     gCtx.translate(pu.x, pu.y);
     gCtx.strokeStyle = spec.color;
     gCtx.fillStyle = spec.color;
@@ -376,19 +409,14 @@ window.addEventListener('resize', () => {
   if (!inGame) return;
   gameCanvas.width = window.innerWidth;
   gameCanvas.height = window.innerHeight;
-  if (!arenaPattern) {
-    arenaPattern = gCtx.createPattern(arenaTile, 'repeat');
-  }
+  if (!arenaPattern) arenaPattern = gCtx.createPattern(arenaTile, 'repeat');
 });
 
-// Place body segments accurately along the recorded head path
 function updateSegmentsFromPath(worm) {
   const targetLen = calcTargetSegments(worm.score);
   const r = calcWormRadius(worm.score);
   const segSpacing = Math.max(2.6, r * 0.22);
-  if (!worm.path || worm.path.length === 0) {
-    worm.path = [{ x: worm.x, y: worm.y }];
-  }
+  if (!worm.path || worm.path.length === 0) worm.path = [{ x: worm.x, y: worm.y }];
   worm.path[0].x = worm.x;
   worm.path[0].y = worm.y;
 
@@ -419,9 +447,7 @@ function updateSegmentsFromPath(worm) {
     }
   }
 
-  if (worm.path.length > pathIdx + 3) {
-    worm.path.length = pathIdx + 3;
-  }
+  if (worm.path.length > pathIdx + 3) worm.path.length = pathIdx + 3;
   worm.segments = newSegs;
 }
 
@@ -436,9 +462,7 @@ function updateWorm(worm, dt) {
     }
   }
 
-  if (worm.mouthTimer > 0) {
-    worm.mouthTimer = Math.max(0, worm.mouthTimer - dt);
-  }
+  if (worm.mouthTimer > 0) worm.mouthTimer = Math.max(0, worm.mouthTimer - dt);
 
   for (const k in worm.effects) {
     if (worm.effects[k] > 0) worm.effects[k] = Math.max(0, worm.effects[k] - dt);
@@ -457,14 +481,10 @@ function updateWorm(worm, dt) {
     while (turnDiff > Math.PI) turnDiff -= Math.PI * 2;
     while (turnDiff < -Math.PI) turnDiff += Math.PI * 2;
 
-    // Exact proportional arc radius so 180-deg turns touch cleanly without gaps
     const turnRadius = rHead * 0.98;
     const maxStep = (speed / turnRadius) * dt;
-    if (Math.abs(turnDiff) <= maxStep) {
-      worm.angle = pointerAngle;
-    } else {
-      worm.angle += Math.sign(turnDiff) * maxStep;
-    }
+    if (Math.abs(turnDiff) <= maxStep) worm.angle = pointerAngle;
+    else worm.angle += Math.sign(turnDiff) * maxStep;
     sendMultiplayerInput();
   } else {
     worm.aiTimer -= dt;
@@ -482,11 +502,8 @@ function updateWorm(worm, dt) {
     while (turnDiff < -Math.PI) turnDiff += Math.PI * 2;
     const turnRadius = rHead * 1.65;
     const maxStep = (speed / turnRadius) * dt;
-    if (Math.abs(turnDiff) <= maxStep) {
-      worm.angle = worm.aiTargetAngle;
-    } else {
-      worm.angle += Math.sign(turnDiff) * maxStep;
-    }
+    if (Math.abs(turnDiff) <= maxStep) worm.angle = worm.aiTargetAngle;
+    else worm.angle += Math.sign(turnDiff) * maxStep;
   }
 
   if (!mpConnected && canBoost && !hasFreeBoost) {
@@ -528,7 +545,6 @@ function updateWorm(worm, dt) {
     }
   }
 
-  // Ensure initial path is uncurled backwards along -angle so tail never bunches at spawn
   if (!worm.path || worm.path.length <= 1) {
     const initLen = calcTargetSegments(worm.score);
     const segSpacing = Math.max(2.6, rHead * 0.22);
@@ -547,7 +563,6 @@ function updateWorm(worm, dt) {
   }
 
   const maxCoord = ARENA_HALF - rHead;
-
   if (Math.abs(worm.x) >= maxCoord || Math.abs(worm.y) >= maxCoord) {
     worm.x = Math.max(-maxCoord, Math.min(maxCoord, worm.x));
     worm.y = Math.max(-maxCoord, Math.min(maxCoord, worm.y));
@@ -566,14 +581,59 @@ function updateWorm(worm, dt) {
     const tailDistFromHole = Math.hypot(tail.x - worm.spawnHole.x, tail.y - worm.spawnHole.y);
     if (tailDistFromHole > 8) {
       worm.spawnHole.alpha = Math.max(0, worm.spawnHole.alpha - dt * 2.5);
-      if (worm.spawnHole.alpha <= 0) {
-        worm.spawnHole = null;
+      if (worm.spawnHole.alpha <= 0) worm.spawnHole = null;
+    }
+  }
+
+  // Event-driven fruit eating check (only local viewport box around worm head)
+  const eatRadius = rHead + (worm.effects.magnet > 0 ? 155 : 16);
+  const pullRadius = worm.effects.magnet > 0 ? 225 : eatRadius;
+  const eatenIdsToNotify = [];
+
+  for (let i = foods.length - 1; i >= 0; i--) {
+    const f = foods[i];
+    const dx = worm.x - f.x;
+    const dy = worm.y - f.y;
+    if (Math.abs(dx) > pullRadius || Math.abs(dy) > pullRadius) continue;
+
+    const dist = Math.hypot(dx, dy);
+    if (worm.effects.magnet > 0 && dist < 225) {
+      f.x += dx * 0.2;
+      f.y += dy * 0.2;
+    }
+    if (dist < eatRadius) {
+      worm.mouthTimer = 0.28;
+      const gained = f.val * (worm.effects.double > 0 ? 2 : 1);
+
+      if (mpConnected && worm.isPlayer) {
+        eatenIdsToNotify.push(f.id);
+        removeFoodById(f.id);
+        playTone(520 + f.val * 10, 'sine', 0.05, 0.04);
+      } else if (!mpConnected) {
+        worm.score += gained;
+        if (worm.isPlayer) {
+          playTone(520 + f.val * 10, 'sine', 0.05, 0.04);
+          floatingTexts.push({
+            x: f.x,
+            y: f.y - 10,
+            text: `+${gained}`,
+            alpha: 1.0,
+            color: gained >= 20 ? '#ffd166' : '#80ed99'
+          });
+        }
+        const delay = 1.1 + Math.random() * 1.1;
+        const nextPos = randomPointInSquareArena(160);
+        respawnQueue.push({ timer: delay, x: nextPos.x, y: nextPos.y });
+        foods.splice(i, 1);
       }
     }
   }
 
+  if (mpConnected && worm.isPlayer && eatenIdsToNotify.length > 0 && wsSocket && wsSocket.readyState === 1) {
+    wsSocket.send(JSON.stringify({ type: 'eat_food', ids: eatenIdsToNotify }));
+  }
+
   if (!mpConnected) {
-    // Offline powerup orb pickup
     const puEatRadius = rHead + 18;
     for (let i = localPowerups.length - 1; i >= 0; i--) {
       const pu = localPowerups[i];
@@ -594,34 +654,26 @@ function updateWorm(worm, dt) {
       }
     }
 
-    const eatRadius = rHead + (worm.effects.magnet > 0 ? 130 : 14);
-    for (let i = foods.length - 1; i >= 0; i--) {
-      const f = foods[i];
-      const dist = Math.hypot(worm.x - f.x, worm.y - f.y);
-      if (worm.effects.magnet > 0 && dist < 185) {
-        f.x += (worm.x - f.x) * 0.16;
-        f.y += (worm.y - f.y) * 0.16;
-      }
-      if (dist < eatRadius) {
-        worm.mouthTimer = 0.28;
-        const gained = f.val * (worm.effects.double > 0 ? 2 : 1);
-        worm.score += gained;
-
-        if (worm.isPlayer) {
-          playTone(520 + f.val * 10, 'sine', 0.05, 0.04);
+    if (worm.isPlayer && localCoins.length > 0) {
+      for (let i = localCoins.length - 1; i >= 0; i--) {
+        const c = localCoins[i];
+        if (Math.hypot(worm.x - c.x, worm.y - c.y) < puEatRadius) {
+          state.coins += c.val;
+          saveState();
+          updateGameCoinsHud(state.coins);
+          document.getElementById('lobbyCoins').textContent = state.coins;
+          playTone(840, 'triangle', 0.14, 0.08);
           floatingTexts.push({
-            x: f.x,
-            y: f.y - 10,
-            text: `+${gained}`,
+            x: c.x,
+            y: c.y - 14,
+            text: `+${c.val} 🪙`,
             alpha: 1.0,
-            color: gained >= 20 ? '#ffd166' : '#80ed99'
+            color: '#fef08a'
           });
+          const np = randomPointInSquareArena(260);
+          c.x = np.x;
+          c.y = np.y;
         }
-
-        const delay = 1.2 + Math.random() * 1.3;
-        const nextPos = randomPointInSquareArena(160);
-        respawnQueue.push({ timer: delay, x: nextPos.x, y: nextPos.y });
-        foods.splice(i, 1);
       }
     }
   }
@@ -653,7 +705,6 @@ function checkWormCollisions() {
   }
 }
 
-// Helper: trace a smooth quadratic spline through a range of segments
 function traceSmoothSpline(ctx, segs, startIdx, endIdx) {
   if (endIdx < startIdx) return;
   ctx.beginPath();
@@ -680,18 +731,16 @@ function renderContinuousWormBody(ctx, segs, r, colors, isBoostingActive = false
   ctx.save();
   ctx.lineJoin = 'round';
 
-  // 1. Boost outer golden aura
   if (isBoostingActive) {
     ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgba(250, 204, 21, 0.28)';
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.34)';
     ctx.lineWidth = (r + 4.5) * 2;
     traceSmoothSpline(ctx, segs, 0, len - 1);
     ctx.stroke();
   }
 
-  // 2. Dark outline + base fill
   ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(8, 16, 24, 0.45)';
+  ctx.strokeStyle = 'rgba(8, 16, 24, 0.38)';
   ctx.lineWidth = r * 2 + 2.4;
   traceSmoothSpline(ctx, segs, 0, len - 1);
   ctx.stroke();
@@ -701,7 +750,6 @@ function renderContinuousWormBody(ctx, segs, r, colors, isBoostingActive = false
   traceSmoothSpline(ctx, segs, 0, len - 1);
   ctx.stroke();
 
-  // 3. Alternating color bands (wider step = 3x higher FPS)
   const bandStep = 6;
   ctx.lineCap = 'butt';
   for (let end = len - 1; end > 0; end -= bandStep) {
@@ -713,7 +761,6 @@ function renderContinuousWormBody(ctx, segs, r, colors, isBoostingActive = false
     ctx.stroke();
   }
 
-  // 4. Tail cap
   if (len >= 2) {
     const tail = segs[len - 1];
     const prevTail = segs[len - 2];
@@ -749,7 +796,7 @@ function drawWorm(worm) {
     gCtx.arc(worm.spawnHole.x, worm.spawnHole.y, r + 3, 0, Math.PI * 2);
     gCtx.fill();
 
-    gCtx.strokeStyle = 'rgba(118, 200, 147, 0.25)';
+    gCtx.strokeStyle = 'rgba(118, 200, 147, 0.35)';
     gCtx.lineWidth = 2;
     gCtx.stroke();
     gCtx.restore();
@@ -757,7 +804,7 @@ function drawWorm(worm) {
 
   if (worm.shieldTime > 0) {
     const blink = worm.shieldTime < 1.5 && Math.floor(worm.shieldTime * 10) % 2 === 0;
-    gCtx.strokeStyle = blink ? '#facc15' : 'rgba(76, 201, 240, 0.75)';
+    gCtx.strokeStyle = blink ? '#facc15' : 'rgba(76, 201, 240, 0.85)';
     gCtx.lineWidth = 4;
     gCtx.beginPath();
     gCtx.arc(worm.x, worm.y, r + 10, 0, Math.PI * 2);
@@ -766,14 +813,13 @@ function drawWorm(worm) {
 
   renderContinuousWormBody(gCtx, worm.segments, r, worm.colors, worm.isBoostingActive);
 
-  // 3D shaded head cap matching the tube seamlessly
   const headGrad = gCtx.createRadialGradient(
     worm.x - r * 0.28, worm.y - r * 0.28, r * 0.12,
     worm.x, worm.y, r
   );
-  headGrad.addColorStop(0, 'rgba(255, 255, 255, 0.28)');
+  headGrad.addColorStop(0, 'rgba(255, 255, 255, 0.34)');
   headGrad.addColorStop(0.55, 'rgba(255, 255, 255, 0)');
-  headGrad.addColorStop(1, 'rgba(0, 0, 0, 0.18)');
+  headGrad.addColorStop(1, 'rgba(0, 0, 0, 0.15)');
 
   gCtx.fillStyle = worm.colors[0];
   gCtx.beginPath();
@@ -785,7 +831,6 @@ function drawWorm(worm) {
   gCtx.arc(worm.x, worm.y, r, 0, Math.PI * 2);
   gCtx.fill();
 
-  // Mouth
   const mx = worm.x + Math.cos(worm.angle) * (r * 0.66);
   const my = worm.y + Math.sin(worm.angle) * (r * 0.66);
   gCtx.save();
@@ -822,7 +867,6 @@ function drawWorm(worm) {
   }
   gCtx.restore();
 
-  // Expressive eyes
   const eyeDist = r * 0.42;
   [-0.58, 0.58].forEach(offset => {
     const ex = worm.x + Math.cos(worm.angle + offset) * eyeDist;
@@ -856,21 +900,21 @@ function drawWorm(worm) {
 
 function drawMinimap() {
   const x0 = 14;
-  const y0 = 56;
+  const y0 = 46;
   const size = 68;
   const cx = x0 + size / 2;
   const cy = y0 + size / 2;
 
   gCtx.save();
-  gCtx.fillStyle = 'rgba(10, 20, 35, 0.52)';
-  gCtx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+  gCtx.fillStyle = 'rgba(10, 20, 35, 0.54)';
+  gCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
   gCtx.lineWidth = 1.2;
   gCtx.beginPath();
   gCtx.roundRect(x0, y0, size, size, 8);
   gCtx.fill();
   gCtx.stroke();
 
-  gCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+  gCtx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
   gCtx.lineWidth = 1;
   gCtx.beginPath();
   gCtx.moveTo(cx, y0 + 5);
@@ -882,14 +926,14 @@ function drawMinimap() {
   const scale = (size / 2 - 5) / ARENA_HALF;
   const others = mpConnected ? remoteWorms : bots;
   others.forEach(b => {
-    gCtx.fillStyle = 'rgba(255, 107, 107, 0.85)';
+    gCtx.fillStyle = 'rgba(255, 107, 107, 0.9)';
     gCtx.beginPath();
     gCtx.arc(cx + b.x * scale, cy + b.y * scale, 2, 0, Math.PI * 2);
     gCtx.fill();
   });
 
   if (player) {
-    gCtx.fillStyle = 'rgba(128, 237, 153, 0.95)';
+    gCtx.fillStyle = 'rgba(128, 237, 153, 0.98)';
     gCtx.beginPath();
     gCtx.arc(cx + player.x * scale, cy + player.y * scale, 3, 0, Math.PI * 2);
     gCtx.fill();
@@ -901,7 +945,6 @@ function drawFloatingJoystick() {
   if (!joyActive) return;
 
   gCtx.save();
-
   gCtx.fillStyle = 'rgba(12, 24, 38, 0.28)';
   gCtx.strokeStyle = isBoosting ? 'rgba(250, 204, 21, 0.55)' : 'rgba(255, 255, 255, 0.34)';
   gCtx.lineWidth = 2;
@@ -921,7 +964,6 @@ function drawFloatingJoystick() {
   gCtx.beginPath();
   gCtx.arc(joyKnobX, joyKnobY, 17, 0, Math.PI * 2);
   gCtx.fill();
-
   gCtx.restore();
 }
 
@@ -942,9 +984,7 @@ function gameLoop(now) {
   }
 
   syncMultiplayerPowerupHook();
-  if (!mpConnected) {
-    ensureLocalPowerups();
-  }
+  if (!mpConnected) ensureLocalPowerups();
 
   const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
   lastFrameTime = now;
@@ -968,9 +1008,7 @@ function gameLoop(now) {
       while (aDiff < -Math.PI) aDiff += Math.PI * 2;
       rw.angle += aDiff * lerp;
 
-      if (!rw.path || rw.path.length === 0) {
-        rw.path = [{ x: rw.x, y: rw.y }];
-      }
+      if (!rw.path || rw.path.length === 0) rw.path = [{ x: rw.x, y: rw.y }];
       if (Math.hypot(rw.x - rw.path[0].x, rw.y - rw.path[0].y) >= 0.8) {
         rw.path.unshift({ x: rw.x, y: rw.y });
       } else {
@@ -1006,10 +1044,10 @@ function gameLoop(now) {
   gCtx.scale(currentZoom, currentZoom);
   gCtx.translate(-player.x, -player.y);
 
-  gCtx.fillStyle = '#091510';
+  gCtx.fillStyle = '#0f2922';
   gCtx.fillRect(-ARENA_HALF - 1500, -ARENA_HALF - 1500, (ARENA_HALF + 1500) * 2, (ARENA_HALF + 1500) * 2);
 
-  gCtx.fillStyle = arenaPattern || '#14362b';
+  gCtx.fillStyle = arenaPattern || '#1f5747';
   gCtx.fillRect(-ARENA_HALF, -ARENA_HALF, ARENA_HALF * 2, ARENA_HALF * 2);
 
   gCtx.strokeStyle = '#ef4444';
@@ -1026,13 +1064,11 @@ function gameLoop(now) {
     gCtx.drawImage(sprite, f.x - sprite.width / 2, f.y - sprite.height / 2);
   }
 
+  drawArenaCoins(viewW, viewH, now);
   drawPowerupOrbs(viewW, viewH, now);
 
-  if (mpConnected) {
-    remoteWorms.forEach(drawWorm);
-  } else {
-    bots.forEach(drawWorm);
-  }
+  if (mpConnected) remoteWorms.forEach(drawWorm);
+  else bots.forEach(drawWorm);
   drawWorm(player);
 
   for (let i = floatingTexts.length - 1; i >= 0; i--) {
@@ -1059,7 +1095,6 @@ function gameLoop(now) {
   drawMinimap();
   drawFloatingJoystick();
   updatePowerupHudBar();
-  document.getElementById('scoreVal').textContent = Math.floor(player.score);
 
   const rivals = mpConnected ? remoteWorms : bots;
   const sortedAll = [player, ...rivals].sort((a, b) => b.score - a.score);
@@ -1067,7 +1102,7 @@ function gameLoop(now) {
   const topFive = sortedAll.slice(0, 5);
 
   const lbTitleEl = document.getElementById('lbTitleText');
-  const baseLbTitle = (I18N[state.lang] && I18N[state.lang].leaderboard) || 'ԱՌԱՋԱՏԱՐՆԵՐ';
+  const baseLbTitle = (I18N[state.lang] && I18N[state.lang].lb) || 'ԱՌԱՋԱՏԱՐՆԵՐ';
   lbTitleEl.textContent = `${baseLbTitle} (${sortedAll.length})`;
 
   let lbHtml = topFive.map((w, idx) => `

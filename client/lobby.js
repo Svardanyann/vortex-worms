@@ -13,6 +13,8 @@ function updateUI() {
 
   document.getElementById('logoSubText').textContent = t.sub;
   document.getElementById('startGameBtn').textContent = t.play;
+  const friendsBtn = document.getElementById('openFriendsBtn');
+  if (friendsBtn) friendsBtn.textContent = t.friendsBtn;
   document.getElementById('openShopBtn').textContent = t.workshop;
   document.getElementById('lobbyHintText').textContent = t.hint;
   document.getElementById('freeGiftLabel').textContent = t.free;
@@ -25,28 +27,71 @@ function updateUI() {
   document.getElementById('lobbyXpFill').style.width = Math.min(100, (state.xp / xpNeeded) * 100) + '%';
   document.getElementById('lobbyXpText').textContent = `${state.xp} / ${xpNeeded} XP`;
 
+  // Inject shiny 3D coin SVG into lobby & in-game HUD
+  const lobbyCoinWrap = document.getElementById('lobbyCoinSvgWrap');
+  if (lobbyCoinWrap && !lobbyCoinWrap.dataset.ready) {
+    lobbyCoinWrap.innerHTML = renderGoldCoinSvg(19);
+    lobbyCoinWrap.dataset.ready = '1';
+  }
+  const gameCoinWrap = document.getElementById('gameCoinSvgWrap');
+  if (gameCoinWrap && !gameCoinWrap.dataset.ready) {
+    gameCoinWrap.innerHTML = renderGoldCoinSvg(15);
+    gameCoinWrap.dataset.ready = '1';
+  }
+
   document.getElementById('shopModalTitle').textContent = t.shopTitle;
   document.getElementById('profileModalTitle').textContent = t.profileTitle;
   document.getElementById('nameLabel').textContent = t.nameLabel;
   document.getElementById('avatarLabel').textContent = t.avatarLabel;
   document.getElementById('saveProfileBtn').textContent = t.save;
 
+  // Friends modal translations
+  const friendsTitle = document.getElementById('friendsModalTitle');
+  if (friendsTitle) friendsTitle.textContent = t.friendsTitle;
+  const createRoomTitle = document.getElementById('createRoomTitle');
+  if (createRoomTitle) createRoomTitle.textContent = t.createRoomTitle;
+  const createRoomSubmitBtn = document.getElementById('createRoomSubmitBtn');
+  if (createRoomSubmitBtn) createRoomSubmitBtn.textContent = t.createRoomBtn;
+  const joinRoomTitle = document.getElementById('joinRoomTitle');
+  if (joinRoomTitle) joinRoomTitle.textContent = t.joinRoomTitle;
+  const joinRoomSubmitBtn = document.getElementById('joinRoomSubmitBtn');
+  if (joinRoomSubmitBtn) joinRoomSubmitBtn.textContent = t.joinRoomBtn;
+
+  // Settings sliders & labels
   document.getElementById('settingsModalTitle').textContent = t.settingsTitle;
-  document.getElementById('soundSettingLabel').textContent = t.soundLabel;
-  document.getElementById('toggleSoundSettingBtn').textContent = state.sound ? t.soundOn : t.soundOff;
+  const musicLabel = document.getElementById('musicSettingLabel');
+  if (musicLabel) musicLabel.textContent = t.musicLabel;
+  const sfxLabel = document.getElementById('sfxSettingLabel');
+  if (sfxLabel) sfxLabel.textContent = t.sfxLabel;
+
+  const musicSlider = document.getElementById('musicVolSlider');
+  const musicVal = document.getElementById('musicVolVal');
+  if (musicSlider && musicVal) {
+    musicSlider.value = state.musicVol;
+    musicVal.textContent = `${state.musicVol}%`;
+  }
+  const sfxSlider = document.getElementById('sfxVolSlider');
+  const sfxVal = document.getElementById('sfxVolVal');
+  if (sfxSlider && sfxVal) {
+    sfxSlider.value = state.sfxVol;
+    sfxVal.textContent = `${state.sfxVol}%`;
+  }
+
   document.getElementById('langSettingLabel').textContent = t.langLabel;
   document.getElementById('cycleLangSettingBtn').textContent = t.name;
   document.getElementById('fsSettingLabel').textContent = t.fsLabel;
   document.getElementById('fsSettingBtn').textContent = t.fsOpen;
 
-  document.getElementById('hudScoreLabel').textContent = t.score;
-  document.getElementById('hudCoinsLabel').textContent = t.coins;
   document.getElementById('lbTitleText').textContent = t.lb;
   document.getElementById('shieldNotice').textContent = t.shieldEnd;
   document.getElementById('goTitle').textContent = t.gameOver;
   document.getElementById('goScoreLabel').textContent = t.yourScore;
   document.getElementById('playAgainBtn').textContent = t.playAgain;
   document.getElementById('goLobbyBtn').textContent = t.toLobby;
+
+  if (typeof updateGameCoinsHud === 'function') {
+    updateGameCoinsHud(state.coins);
+  }
 
   // Hide fullscreen buttons on phone, keep on PC
   const isPhone = isMobileOrTouchDevice();
@@ -57,7 +102,8 @@ function updateUI() {
   const fsSettingRow = document.getElementById('fsSettingRow');
   if (fsSettingRow) fsSettingRow.style.display = isPhone ? 'none' : '';
 
-  if (state.sound) startBgMusic();
+  if ((state.musicVol ?? 100) > 0) startBgMusic();
+  else stopBgMusic();
 }
 
 function toggleFullscreen() {
@@ -65,6 +111,39 @@ function toggleFullscreen() {
     document.documentElement.requestFullscreen().catch(() => {});
   } else {
     document.exitFullscreen().catch(() => {});
+  }
+}
+
+// ================= SHARE GAME HELPER =================
+async function shareGameInvite(roomCode = null) {
+  const t = I18N[state.lang] || I18N.hy;
+  const baseUrl = (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+    ? `${window.location.origin}${window.location.pathname}`
+    : 'http://92.5.178.137:3000/';
+  const shareUrl = roomCode ? `${baseUrl}?room=${roomCode}` : baseUrl;
+  const shareText = roomCode
+    ? t.roomShareText.replace('{code}', roomCode)
+    : t.shareText;
+
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: 'Vortex Worms',
+        text: shareText,
+        url: shareUrl
+      });
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+    }
+  }
+
+  const fullCopy = `${shareText} ${shareUrl}`;
+  try {
+    await navigator.clipboard.writeText(fullCopy);
+    alert(`${t.linkCopied}: ${shareUrl}`);
+  } catch (_) {
+    prompt(t.linkCopied, shareUrl);
   }
 }
 
@@ -80,7 +159,6 @@ function resizeLobby() {
 window.addEventListener('resize', resizeLobby);
 resizeLobby();
 
-// Continuous 3D tubular worm matching in-game look
 const lobbyWorm = {
   segments: [],
   segCount: 28,
@@ -151,20 +229,20 @@ window.addEventListener('pointerup', () => {
 
 function drawLobbyBackground() {
   const skyGrad = lCtx.createLinearGradient(0, 0, 0, lh);
-  skyGrad.addColorStop(0, '#1e6091');
-  skyGrad.addColorStop(0.45, '#34a0a4');
-  skyGrad.addColorStop(0.75, '#76c893');
-  skyGrad.addColorStop(1, '#52b69a');
+  skyGrad.addColorStop(0, '#2575ab');
+  skyGrad.addColorStop(0.45, '#43b3b8');
+  skyGrad.addColorStop(0.75, '#86d8a3');
+  skyGrad.addColorStop(1, '#5ec6aa');
   lCtx.fillStyle = skyGrad;
   lCtx.fillRect(0, 0, lw, lh);
 
   const sunGrad = lCtx.createRadialGradient(lw * 0.5, lh * 0.25, 10, lw * 0.5, lh * 0.25, lw * 0.45);
-  sunGrad.addColorStop(0, 'rgba(255, 243, 176, 0.45)');
+  sunGrad.addColorStop(0, 'rgba(255, 246, 190, 0.52)');
   sunGrad.addColorStop(1, 'rgba(255, 243, 176, 0)');
   lCtx.fillStyle = sunGrad;
   lCtx.fillRect(0, 0, lw, lh);
 
-  lCtx.fillStyle = '#38a3a5';
+  lCtx.fillStyle = '#40b3b5';
   lCtx.beginPath();
   lCtx.moveTo(0, lh * 0.68);
   lCtx.quadraticCurveTo(lw * 0.28, lh * 0.54, lw * 0.6, lh * 0.66);
@@ -175,8 +253,8 @@ function drawLobbyBackground() {
   lCtx.fill();
 
   const hillGrad = lCtx.createLinearGradient(0, lh * 0.65, 0, lh);
-  hillGrad.addColorStop(0, '#57cc99');
-  hillGrad.addColorStop(1, '#22577a');
+  hillGrad.addColorStop(0, '#62d6a3');
+  hillGrad.addColorStop(1, '#28668c');
   lCtx.fillStyle = hillGrad;
   lCtx.beginPath();
   lCtx.moveTo(0, lh * 0.74);
@@ -186,7 +264,7 @@ function drawLobbyBackground() {
   lCtx.closePath();
   lCtx.fill();
 
-  lCtx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+  lCtx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
   lCtx.lineWidth = 3;
   lCtx.beginPath();
   lCtx.ellipse(lw * 0.5, lh * 0.56, lw * 0.32, lh * 0.18, 0, 0, Math.PI * 2);
@@ -261,9 +339,9 @@ function updateAndDrawLobbyWorm() {
     head.x - r * 0.28, head.y - r * 0.28, r * 0.12,
     head.x, head.y, r
   );
-  headGrad.addColorStop(0, 'rgba(255, 255, 255, 0.28)');
+  headGrad.addColorStop(0, 'rgba(255, 255, 255, 0.32)');
   headGrad.addColorStop(0.55, 'rgba(255, 255, 255, 0)');
-  headGrad.addColorStop(1, 'rgba(0, 0, 0, 0.18)');
+  headGrad.addColorStop(1, 'rgba(0, 0, 0, 0.16)');
 
   lCtx.fillStyle = skin.colors[0];
   lCtx.beginPath();
@@ -453,17 +531,38 @@ document.getElementById('saveProfileBtn').addEventListener('click', () => {
 });
 
 document.getElementById('openSettingsBtn').addEventListener('click', () => openModal('settingsModal'));
+document.getElementById('shareGameBtn').addEventListener('click', () => shareGameInvite(null));
+
 document.getElementById('cycleLangSettingBtn').addEventListener('click', () => {
   const idx = (LANGS.indexOf(state.lang) + 1) % LANGS.length;
   state.lang = LANGS[idx];
   saveState();
   updateUI();
 });
-document.getElementById('toggleSoundSettingBtn').addEventListener('click', () => {
-  state.sound = !state.sound;
-  saveState();
-  updateUI();
-});
+
+const musicSliderEl = document.getElementById('musicVolSlider');
+if (musicSliderEl) {
+  musicSliderEl.addEventListener('input', (e) => {
+    state.musicVol = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+    const valEl = document.getElementById('musicVolVal');
+    if (valEl) valEl.textContent = `${state.musicVol}%`;
+    if (state.musicVol > 0) startBgMusic();
+    else stopBgMusic();
+    saveState();
+  });
+}
+
+const sfxSliderEl = document.getElementById('sfxVolSlider');
+if (sfxSliderEl) {
+  sfxSliderEl.addEventListener('input', (e) => {
+    state.sfxVol = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+    const valEl = document.getElementById('sfxVolVal');
+    if (valEl) valEl.textContent = `${state.sfxVol}%`;
+    saveState();
+  });
+  sfxSliderEl.addEventListener('change', () => playTone(560, 'sine', 0.06, 0.06));
+}
+
 document.getElementById('fullscreenLobbyBtn').addEventListener('click', toggleFullscreen);
 document.getElementById('fsSettingBtn').addEventListener('click', toggleFullscreen);
 
