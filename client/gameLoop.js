@@ -870,29 +870,7 @@ function drawMinimap() {
   gCtx.fill();
   gCtx.stroke();
 
-  const coinsEl = document.getElementById('gameCoinsVal');
-  const coinsPill = coinsEl ? coinsEl.parentElement : null;
-  if (coinsPill) {
-    const rect = coinsPill.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      x0 = Math.round(rect.left);
-      y0 = Math.round(rect.bottom + 6);
-    }
-  }
-
-  const cx = x0 + size / 2;
-  const cy = y0 + size / 2;
-
-  gCtx.save();
-  gCtx.fillStyle = 'rgba(10, 20, 35, 0.18)';
-  gCtx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
-  gCtx.lineWidth = 1;
-  gCtx.beginPath();
-  gCtx.roundRect(x0, y0, size, size, 8);
-  gCtx.fill();
-  gCtx.stroke();
-
-  gCtx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+  gCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
   gCtx.lineWidth = 1;
   gCtx.beginPath();
   gCtx.moveTo(cx, y0 + 5);
@@ -904,16 +882,16 @@ function drawMinimap() {
   const scale = (size / 2 - 5) / ARENA_HALF;
   const others = mpConnected ? remoteWorms : bots;
   others.forEach(b => {
-    gCtx.fillStyle = 'rgba(255, 107, 107, 0.75)';
+    gCtx.fillStyle = 'rgba(255, 107, 107, 0.85)';
     gCtx.beginPath();
-    gCtx.arc(cx + b.x * scale, cy + b.y * scale, 1.8, 0, Math.PI * 2);
+    gCtx.arc(cx + b.x * scale, cy + b.y * scale, 2, 0, Math.PI * 2);
     gCtx.fill();
   });
 
   if (player) {
-    gCtx.fillStyle = 'rgba(128, 237, 153, 0.9)';
+    gCtx.fillStyle = 'rgba(128, 237, 153, 0.95)';
     gCtx.beginPath();
-    gCtx.arc(cx + player.x * scale, cy + player.y * scale, 2.8, 0, Math.PI * 2);
+    gCtx.arc(cx + player.x * scale, cy + player.y * scale, 3, 0, Math.PI * 2);
     gCtx.fill();
   }
   gCtx.restore();
