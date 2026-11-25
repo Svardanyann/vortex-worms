@@ -3,7 +3,7 @@ const gameCanvas = document.getElementById('gameCanvas');
 const gCtx = gameCanvas.getContext('2d');
 gameCanvas.style.touchAction = 'none';
 
-const ARENA_HALF = 4500;
+const ARENA_HALF = 3000;
 
 const FRUITS = [
   { emoji: '🍒', val: 2, r: 9 },
@@ -821,21 +821,32 @@ function killWorm(worm, allWorms, killer = null) {
   }
 }
 
-// ================= 5-SECOND BACKGROUND / INACTIVE KILL TIMER =================
+/// ================= 5-SECOND BACKGROUND / INACTIVE KILL TIMER =================
 let awayKillTimer = null;
+let awayStartedAt = 0;
+
+function executeAwayKill() {
+  awayKillTimer = null;
+  awayStartedAt = 0;
+  if (inGame && player) {
+    if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
+      try { wsSocket.send(JSON.stringify({ type: 'leave' })); } catch (e) {}
+    }
+    disconnectMultiplayer();
+    killWorm(player, [], null);
+  }
+}
 
 function startAwayTimer() {
-  if (!inGame || !player || awayKillTimer) return;
-  awayKillTimer = setTimeout(() => {
-    awayKillTimer = null;
-    if (inGame && player) {
-      if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
-        try { wsSocket.send(JSON.stringify({ type: 'leave' })); } catch (e) {}
-      }
-      disconnectMultiplayer();
-      killWorm(player, [], null);
-    }
-  }, 5000);
+  if (!inGame || !player) return;
+  // Ignore button-click focus loss during the first 600ms of match start
+  if (performance.now() - lastStartAt < 600) return;
+  if (!awayStartedAt) {
+    awayStartedAt = Date.now();
+  }
+  if (!awayKillTimer) {
+    awayKillTimer = setTimeout(executeAwayKill, 5000);
+  }
 }
 
 function clearAwayTimer() {
@@ -843,6 +854,11 @@ function clearAwayTimer() {
     clearTimeout(awayKillTimer);
     awayKillTimer = null;
   }
+  if (awayStartedAt && (Date.now() - awayStartedAt >= 5000)) {
+    executeAwayKill();
+    return;
+  }
+  awayStartedAt = 0;
 }
 
 document.addEventListener('visibilitychange', () => {

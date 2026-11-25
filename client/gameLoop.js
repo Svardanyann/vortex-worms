@@ -208,9 +208,9 @@ function activatePlayerPowerup(type) {
   player.effects[type] = POWERUP_DURATION;
   playTone(680, 'triangle', 0.12, 0.07);
 
-  if (typeof mpConnected !== 'undefined' && mpConnected && typeof mpSocket !== 'undefined' && mpSocket && mpSocket.readyState === 1) {
-    mpSocket.send(JSON.stringify({ type: 'use_powerup', powerup: type }));
-  }
+  if (typeof mpConnected !== 'undefined' && mpConnected && typeof wsSocket !== 'undefined' && wsSocket && wsSocket.readyState === 1) {
+  wsSocket.send(JSON.stringify({ type: 'use_powerup', powerup: type }));
+}
 
   const spec = POWERUP_SPECS[type];
   floatingTexts.push({
@@ -260,9 +260,9 @@ window.addEventListener('keydown', (e) => {
 // Hook into multiplayer messages seamlessly if mpSocket exists
 let hookedMpSocket = null;
 function syncMultiplayerPowerupHook() {
-  if (typeof mpSocket === 'undefined' || !mpSocket || mpSocket === hookedMpSocket) return;
-  hookedMpSocket = mpSocket;
-  mpSocket.addEventListener('message', (ev) => {
+  if (typeof wsSocket === 'undefined' || !wsSocket || wsSocket === hookedMpSocket) return;
+  hookedMpSocket = wsSocket;
+  wsSocket.addEventListener('message', (ev) => {
     try {
       const msg = JSON.parse(ev.data);
       if (msg.type === 'joined') {
