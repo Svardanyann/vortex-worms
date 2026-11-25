@@ -1,457 +1,215 @@
-// ================= DEVICE & UI HELPERS =================
-function isMobileOrTouchDevice() {
-  const { protocol, hostname, port } = window.location;
-  const isCap = protocol === 'capacitor:' || protocol === 'file:' || (hostname === 'localhost' && !port);
-  return isCap || (navigator.maxTouchPoints > 0 && window.innerWidth <= 1024);
-}
+// ==========================================
+// VORTEX WORMS: PROFILE, SHOP, I18N & LOBBY
+// ==========================================
 
-// ================= APPLY LANGUAGE & UI =================
-function updateUI() {
-  const t = I18N[state.lang];
-  const langToggleBtn = document.getElementById('langToggleBtn');
-  if (langToggleBtn) langToggleBtn.remove();
+const SKINS = [
+  { id: 'classic_blue', name: 'Սառցե Ալիք', price: 0, colors: ['#ffffff', '#e2e8f0', '#38bdf8'] },
+  { id: 'emerald_viper', name: 'Զմրուխտե Օձ', price: 120, colors: ['#10b981', '#059669', '#a7f3d0'] },
+  { id: 'lava_flame', name: 'Հրե Կրակ', price: 220, colors: ['#f97316', '#ef4444', '#facc15'] },
+  { id: 'neon_cyber', name: 'Նեոն Փոթորիկ', price: 350, colors: ['#a855f7', '#ec4899', '#38bdf8'] },
+  { id: 'royal_gold', name: 'Ոսկե Արքա', price: 500, colors: ['#fbbf24', '#d97706', '#fef08a'] },
+  { id: 'melon_king', name: 'Ձմերուկի Արքա', price: 180, colors: ['#ef4444', '#22c55e', '#15803d'] }
+];
 
-  document.getElementById('logoSubText').textContent = t.sub;
-  document.getElementById('startGameBtn').textContent = t.play;
-  const friendsBtn = document.getElementById('openFriendsBtn');
-  if (friendsBtn) friendsBtn.textContent = t.friendsBtn;
-  document.getElementById('openShopBtn').textContent = t.workshop;
-  document.getElementById('lobbyHintText').textContent = t.hint;
-  document.getElementById('freeGiftLabel').textContent = t.free;
+const AVATARS = ['🐛', '🐍', '🐉', '👑', '⚡', '🔥', '🍉', '😎', '🤖', '🦊'];
 
-  document.getElementById('lobbyAvatar').textContent = state.avatar;
-  document.getElementById('lobbyLevel').textContent = state.level;
-  document.getElementById('lobbyNameBtn').textContent = state.name;
-  document.getElementById('lobbyCoins').textContent = state.coins;
-  const xpNeeded = state.level * 100;
-  document.getElementById('lobbyXpFill').style.width = Math.min(100, (state.xp / xpNeeded) * 100) + '%';
-  document.getElementById('lobbyXpText').textContent = `${state.xp} / ${xpNeeded} XP`;
-
-  // Inject shiny 3D coin SVG into lobby & in-game HUD
-  const lobbyCoinWrap = document.getElementById('lobbyCoinSvgWrap');
-  if (lobbyCoinWrap && !lobbyCoinWrap.dataset.ready) {
-    lobbyCoinWrap.innerHTML = renderGoldCoinSvg(19);
-    lobbyCoinWrap.dataset.ready = '1';
-  }
-  const gameCoinWrap = document.getElementById('gameCoinSvgWrap');
-  if (gameCoinWrap && !gameCoinWrap.dataset.ready) {
-    gameCoinWrap.innerHTML = renderGoldCoinSvg(15);
-    gameCoinWrap.dataset.ready = '1';
-  }
-
-  document.getElementById('shopModalTitle').textContent = t.shopTitle;
-  document.getElementById('profileModalTitle').textContent = t.profileTitle;
-  document.getElementById('nameLabel').textContent = t.nameLabel;
-  document.getElementById('avatarLabel').textContent = t.avatarLabel;
-  document.getElementById('saveProfileBtn').textContent = t.save;
-
-  // Friends modal translations
-  const friendsTitle = document.getElementById('friendsModalTitle');
-  if (friendsTitle) friendsTitle.textContent = t.friendsTitle;
-  const createRoomTitle = document.getElementById('createRoomTitle');
-  if (createRoomTitle) createRoomTitle.textContent = t.createRoomTitle;
-  const createRoomSubmitBtn = document.getElementById('createRoomSubmitBtn');
-  if (createRoomSubmitBtn) createRoomSubmitBtn.textContent = t.createRoomBtn;
-  const joinRoomTitle = document.getElementById('joinRoomTitle');
-  if (joinRoomTitle) joinRoomTitle.textContent = t.joinRoomTitle;
-  const joinRoomSubmitBtn = document.getElementById('joinRoomSubmitBtn');
-  if (joinRoomSubmitBtn) joinRoomSubmitBtn.textContent = t.joinRoomBtn;
-
-  // Settings sliders & labels
-  document.getElementById('settingsModalTitle').textContent = t.settingsTitle;
-  const musicLabel = document.getElementById('musicSettingLabel');
-  if (musicLabel) musicLabel.textContent = t.musicLabel;
-  const sfxLabel = document.getElementById('sfxSettingLabel');
-  if (sfxLabel) sfxLabel.textContent = t.sfxLabel;
-
-  const musicSlider = document.getElementById('musicVolSlider');
-  const musicVal = document.getElementById('musicVolVal');
-  if (musicSlider && musicVal) {
-    musicSlider.value = state.musicVol;
-    musicVal.textContent = `${state.musicVol}%`;
-  }
-  const sfxSlider = document.getElementById('sfxVolSlider');
-  const sfxVal = document.getElementById('sfxVolVal');
-  if (sfxSlider && sfxVal) {
-    sfxSlider.value = state.sfxVol;
-    sfxVal.textContent = `${state.sfxVol}%`;
-  }
-
-  document.getElementById('langSettingLabel').textContent = t.langLabel;
-  document.getElementById('cycleLangSettingBtn').textContent = t.name;
-  document.getElementById('fsSettingLabel').textContent = t.fsLabel;
-  document.getElementById('fsSettingBtn').textContent = t.fsOpen;
-
-  document.getElementById('lbTitleText').textContent = t.lb;
-  document.getElementById('shieldNotice').textContent = t.shieldEnd;
-  document.getElementById('goTitle').textContent = t.gameOver;
-  document.getElementById('goScoreLabel').textContent = t.yourScore;
-  document.getElementById('playAgainBtn').textContent = t.playAgain;
-  document.getElementById('goLobbyBtn').textContent = t.toLobby;
-
-  if (typeof updateGameCoinsHud === 'function') {
-    updateGameCoinsHud(state.coins);
-  }
-
-  // Hide fullscreen buttons on phone, keep on PC
-  const isPhone = isMobileOrTouchDevice();
-  const fsLobbyBtn = document.getElementById('fullscreenLobbyBtn');
-  if (fsLobbyBtn) fsLobbyBtn.style.display = isPhone ? 'none' : '';
-  const fsGameBtn = document.getElementById('gameFsBtn');
-  if (fsGameBtn) fsGameBtn.style.display = isPhone ? 'none' : '';
-  const fsSettingRow = document.getElementById('fsSettingRow');
-  if (fsSettingRow) fsSettingRow.style.display = isPhone ? 'none' : '';
-
-  if ((state.musicVol ?? 100) > 0) startBgMusic();
-  else stopBgMusic();
-}
-
-function toggleFullscreen() {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(() => {});
-  } else {
-    document.exitFullscreen().catch(() => {});
-  }
-}
-
-// ================= SHARE GAME HELPER =================
-async function shareGameInvite(roomCode = null) {
-  const t = I18N[state.lang] || I18N.hy;
-  const baseUrl = (window.location.protocol === 'http:' || window.location.protocol === 'https:')
-    ? `${window.location.origin}${window.location.pathname}`
-    : 'http://92.5.178.137:3000/';
-  const shareUrl = roomCode ? `${baseUrl}?room=${roomCode}` : baseUrl;
-  const shareText = roomCode
-    ? t.roomShareText.replace('{code}', roomCode)
-    : t.shareText;
-
-  if (navigator.share) {
-    try {
-      await navigator.share({
-        title: 'Vortex Worms',
-        text: shareText,
-        url: shareUrl
-      });
-      return;
-    } catch (e) {
-      if (e && e.name === 'AbortError') return;
-    }
-  }
-
-  const fullCopy = `${shareText} ${shareUrl}`;
-  try {
-    await navigator.clipboard.writeText(fullCopy);
-    alert(`${t.linkCopied}: ${shareUrl}`);
-  } catch (_) {
-    prompt(t.linkCopied, shareUrl);
-  }
-}
-
-// ================= LOBBY ILLUSTRATED BACKGROUND & INTERACTIVE WORM =================
-const lobbyCanvas = document.getElementById('lobbyCanvas');
-const lCtx = lobbyCanvas.getContext('2d');
-let lw = 0, lh = 0;
-
-function resizeLobby() {
-  lw = lobbyCanvas.width = window.innerWidth;
-  lh = lobbyCanvas.height = window.innerHeight;
-}
-window.addEventListener('resize', resizeLobby);
-resizeLobby();
-
-const lobbyWorm = {
-  segments: [],
-  segCount: 28,
-  segDist: 2.8,
-  radius: 13,
-  angle: 0,
-  speed: 1.5,
-  targetPoint: null,
-  wanderTimer: 0,
-  targetAngle: 0,
-  isDragging: false
+const DEFAULT_PROFILE = {
+  name: 'Սամվել',
+  avatar: '🐛',
+  coins: 250,
+  xp: 35,
+  level: 1,
+  bestScore: 0,
+  selectedSkin: 'classic_blue',
+  unlockedSkins: ['classic_blue'],
+  lang: 'hy'
 };
 
-function initLobbyWorm() {
-  lobbyWorm.segments = [];
-  const startX = lw * 0.5;
-  const startY = lh * 0.52;
-  for (let i = 0; i < lobbyWorm.segCount; i++) {
-    lobbyWorm.segments.push({ x: startX - i * lobbyWorm.segDist, y: startY });
+function loadProfile() {
+  try {
+    const raw = localStorage.getItem('vortex_worms_profile_v1');
+    if (!raw) return { ...DEFAULT_PROFILE };
+    const parsed = JSON.parse(raw);
+    return {
+      ...DEFAULT_PROFILE,
+      ...parsed,
+      unlockedSkins: Array.isArray(parsed.unlockedSkins) && parsed.unlockedSkins.length
+        ? parsed.unlockedSkins
+        : ['classic_blue']
+    };
+  } catch {
+    return { ...DEFAULT_PROFILE };
   }
 }
-initLobbyWorm();
 
-lobbyCanvas.addEventListener('pointerdown', (e) => {
-  const rect = lobbyCanvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  const my = e.clientY - rect.top;
-
-  let grabbed = false;
-  for (let i = 0; i < lobbyWorm.segments.length; i++) {
-    const s = lobbyWorm.segments[i];
-    if (Math.hypot(mx - s.x, my - s.y) < 34) {
-      grabbed = true;
-      break;
-    }
-  }
-  if (grabbed) {
-    lobbyWorm.isDragging = true;
-    lobbyWorm.targetPoint = null;
-    playTone(520, 'sine', 0.06, 0.05);
-  } else {
-    lobbyWorm.targetPoint = { x: mx, y: my };
-    playTone(440, 'sine', 0.05, 0.04);
-  }
-});
-
-window.addEventListener('pointermove', (e) => {
-  if (!lobbyWorm.isDragging) return;
-  const rect = lobbyCanvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  const my = e.clientY - rect.top;
-  const head = lobbyWorm.segments[0];
-  lobbyWorm.angle = Math.atan2(my - head.y, mx - head.x);
-  head.x = mx;
-  head.y = my;
-  for (let i = 1; i < lobbyWorm.segments.length; i++) {
-    const prev = lobbyWorm.segments[i - 1];
-    const curr = lobbyWorm.segments[i];
-    const a = Math.atan2(prev.y - curr.y, prev.x - curr.x);
-    curr.x = prev.x - Math.cos(a) * lobbyWorm.segDist;
-    curr.y = prev.y - Math.sin(a) * lobbyWorm.segDist;
-  }
-});
-
-window.addEventListener('pointerup', () => {
-  lobbyWorm.isDragging = false;
-});
-
-function drawLobbyBackground() {
-  const skyGrad = lCtx.createLinearGradient(0, 0, 0, lh);
-  skyGrad.addColorStop(0, '#2575ab');
-  skyGrad.addColorStop(0.45, '#43b3b8');
-  skyGrad.addColorStop(0.75, '#86d8a3');
-  skyGrad.addColorStop(1, '#5ec6aa');
-  lCtx.fillStyle = skyGrad;
-  lCtx.fillRect(0, 0, lw, lh);
-
-  const sunGrad = lCtx.createRadialGradient(lw * 0.5, lh * 0.25, 10, lw * 0.5, lh * 0.25, lw * 0.45);
-  sunGrad.addColorStop(0, 'rgba(255, 246, 190, 0.52)');
-  sunGrad.addColorStop(1, 'rgba(255, 243, 176, 0)');
-  lCtx.fillStyle = sunGrad;
-  lCtx.fillRect(0, 0, lw, lh);
-
-  lCtx.fillStyle = '#40b3b5';
-  lCtx.beginPath();
-  lCtx.moveTo(0, lh * 0.68);
-  lCtx.quadraticCurveTo(lw * 0.28, lh * 0.54, lw * 0.6, lh * 0.66);
-  lCtx.quadraticCurveTo(lw * 0.85, lh * 0.74, lw, lh * 0.6);
-  lCtx.lineTo(lw, lh);
-  lCtx.lineTo(0, lh);
-  lCtx.closePath();
-  lCtx.fill();
-
-  const hillGrad = lCtx.createLinearGradient(0, lh * 0.65, 0, lh);
-  hillGrad.addColorStop(0, '#62d6a3');
-  hillGrad.addColorStop(1, '#28668c');
-  lCtx.fillStyle = hillGrad;
-  lCtx.beginPath();
-  lCtx.moveTo(0, lh * 0.74);
-  lCtx.quadraticCurveTo(lw * 0.45, lh * 0.84, lw, lh * 0.7);
-  lCtx.lineTo(lw, lh);
-  lCtx.lineTo(0, lh);
-  lCtx.closePath();
-  lCtx.fill();
-
-  lCtx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
-  lCtx.lineWidth = 3;
-  lCtx.beginPath();
-  lCtx.ellipse(lw * 0.5, lh * 0.56, lw * 0.32, lh * 0.18, 0, 0, Math.PI * 2);
-  lCtx.stroke();
+function saveProfile() {
+  try {
+    localStorage.setItem('vortex_worms_profile_v1', JSON.stringify(profile));
+  } catch {}
 }
 
-function updateAndDrawLobbyWorm() {
-  const head = lobbyWorm.segments[0];
-  const padX = Math.min(120, lw * 0.15);
-  const minY = lh * 0.28;
-  const maxY = lh * 0.74;
+let profile = loadProfile();
 
-  if (!lobbyWorm.isDragging) {
-    if (lobbyWorm.targetPoint) {
-      const dx = lobbyWorm.targetPoint.x - head.x;
-      const dy = lobbyWorm.targetPoint.y - head.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist < 14) {
-        lobbyWorm.targetPoint = null;
-      } else {
-        const desired = Math.atan2(dy, dx);
-        let diff = desired - lobbyWorm.angle;
-        while (diff > Math.PI) diff -= Math.PI * 2;
-        while (diff < -Math.PI) diff += Math.PI * 2;
-        lobbyWorm.angle += diff * 0.08;
-        head.x += Math.cos(lobbyWorm.angle) * 2.6;
-        head.y += Math.sin(lobbyWorm.angle) * 2.6;
-      }
-    } else {
-      lobbyWorm.wanderTimer--;
-      if (lobbyWorm.wanderTimer <= 0) {
-        lobbyWorm.wanderTimer = 90 + Math.random() * 90;
-        lobbyWorm.targetAngle = lobbyWorm.angle + (Math.random() - 0.5) * 1.1;
-      }
-      if (head.x < padX) lobbyWorm.targetAngle = 0;
-      if (head.x > lw - padX) lobbyWorm.targetAngle = Math.PI;
-      if (head.y < minY) lobbyWorm.targetAngle = Math.PI * 0.5;
-      if (head.y > maxY) lobbyWorm.targetAngle = -Math.PI * 0.5;
-
-      let diff = lobbyWorm.targetAngle - lobbyWorm.angle;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      lobbyWorm.angle += diff * 0.035;
-
-      head.x += Math.cos(lobbyWorm.angle) * lobbyWorm.speed;
-      head.y += Math.sin(lobbyWorm.angle) * lobbyWorm.speed;
-    }
-
-    for (let i = 1; i < lobbyWorm.segments.length; i++) {
-      const prev = lobbyWorm.segments[i - 1];
-      const curr = lobbyWorm.segments[i];
-      const a = Math.atan2(prev.y - curr.y, prev.x - curr.x);
-      curr.x = prev.x - Math.cos(a) * lobbyWorm.segDist;
-      curr.y = prev.y - Math.sin(a) * lobbyWorm.segDist;
-    }
-  }
-
-  if (lobbyWorm.targetPoint) {
-    lCtx.strokeStyle = 'rgba(255, 243, 176, 0.7)';
-    lCtx.lineWidth = 2;
-    lCtx.beginPath();
-    lCtx.arc(lobbyWorm.targetPoint.x, lobbyWorm.targetPoint.y, 10, 0, Math.PI * 2);
-    lCtx.stroke();
-  }
-
-  const skin = SKINS.find(s => s.id === state.selectedSkin) || SKINS[0];
-  const r = lobbyWorm.radius;
-
-  renderContinuousWormBody(lCtx, lobbyWorm.segments, r, skin.colors, false);
-
-  const headGrad = lCtx.createRadialGradient(
-    head.x - r * 0.28, head.y - r * 0.28, r * 0.12,
-    head.x, head.y, r
-  );
-  headGrad.addColorStop(0, 'rgba(255, 255, 255, 0.32)');
-  headGrad.addColorStop(0.55, 'rgba(255, 255, 255, 0)');
-  headGrad.addColorStop(1, 'rgba(0, 0, 0, 0.16)');
-
-  lCtx.fillStyle = skin.colors[0];
-  lCtx.beginPath();
-  lCtx.arc(head.x, head.y, r, 0, Math.PI * 2);
-  lCtx.fill();
-
-  lCtx.fillStyle = headGrad;
-  lCtx.beginPath();
-  lCtx.arc(head.x, head.y, r, 0, Math.PI * 2);
-  lCtx.fill();
-
-  const mx = head.x + Math.cos(lobbyWorm.angle) * (r * 0.66);
-  const my = head.y + Math.sin(lobbyWorm.angle) * (r * 0.66);
-  lCtx.save();
-  lCtx.translate(mx, my);
-  lCtx.rotate(lobbyWorm.angle);
-  lCtx.strokeStyle = 'rgba(35, 10, 15, 0.65)';
-  lCtx.lineWidth = Math.max(1.5, r * 0.09);
-  lCtx.lineCap = 'round';
-  lCtx.beginPath();
-  lCtx.arc(-r * 0.08, 0, r * 0.24, -0.45, 0.45);
-  lCtx.stroke();
-  lCtx.restore();
-
-  const eyeDist = r * 0.42;
-  [-0.58, 0.58].forEach(offset => {
-    const ex = head.x + Math.cos(lobbyWorm.angle + offset) * eyeDist;
-    const ey = head.y + Math.sin(lobbyWorm.angle + offset) * eyeDist;
-    lCtx.fillStyle = '#fff';
-    lCtx.strokeStyle = 'rgba(15, 23, 42, 0.35)';
-    lCtx.lineWidth = 1;
-    lCtx.beginPath();
-    lCtx.arc(ex, ey, r * 0.29, 0, Math.PI * 2);
-    lCtx.fill();
-    lCtx.stroke();
-
-    const px = ex + Math.cos(lobbyWorm.angle) * (r * 0.11);
-    const py = ey + Math.sin(lobbyWorm.angle) * (r * 0.11);
-    lCtx.fillStyle = '#111';
-    lCtx.beginPath();
-    lCtx.arc(px, py, r * 0.15, 0, Math.PI * 2);
-    lCtx.fill();
-
-    lCtx.fillStyle = '#fff';
-    lCtx.beginPath();
-    lCtx.arc(px - r * 0.04, py - r * 0.04, r * 0.05, 0, Math.PI * 2);
-    lCtx.fill();
-  });
+function xpNeededForLevel(lvl) {
+  return 100 + (lvl - 1) * 40;
 }
 
-let inGame = false;
-function lobbyLoop() {
-  if (!inGame) {
-    drawLobbyBackground();
-    updateAndDrawLobbyWorm();
+function addXp(amount) {
+  profile.xp += amount;
+  let needed = xpNeededForLevel(profile.level);
+  while (profile.xp >= needed) {
+    profile.xp -= needed;
+    profile.level += 1;
+    profile.coins += 30;
+    needed = xpNeededForLevel(profile.level);
   }
-  requestAnimationFrame(lobbyLoop);
 }
-requestAnimationFrame(lobbyLoop);
 
-// ================= MODALS LOGIC =================
+function applyLocalization() {
+  if (typeof setActiveLanguage === 'function') {
+    setActiveLanguage(profile.lang);
+  }
+  document.getElementById('logoSubText').textContent = t('logoSub');
+  document.getElementById('startGameBtn').textContent = t('playBtn');
+  document.getElementById('openFriendsBtn').textContent = t('friendsBtn');
+  document.getElementById('openShopBtn').textContent = t('workshopBtn');
+  document.getElementById('lobbyHintText').textContent = t('lobbyHint');
+  document.getElementById('shopModalTitle').textContent = t('workshopTitle');
+  document.getElementById('profileModalTitle').textContent = t('profileTitle');
+  document.getElementById('nameLabel').textContent = t('nameLabel');
+  document.getElementById('avatarLabel').textContent = t('avatarLabel');
+  document.getElementById('saveProfileBtn').textContent = t('saveBtn');
+  document.getElementById('friendsModalTitle').textContent = t('friendsTitle');
+  document.getElementById('createRoomTitle').textContent = t('createRoomTitle');
+  document.getElementById('createRoomSubmitBtn').textContent = t('createBtn');
+  document.getElementById('joinRoomTitle').textContent = t('joinRoomTitle');
+  document.getElementById('joinRoomSubmitBtn').textContent = t('joinBtn');
+  document.getElementById('settingsModalTitle').textContent = t('settingsTitle');
+  document.getElementById('musicSettingLabel').textContent = t('musicVolLabel');
+  document.getElementById('sfxSettingLabel').textContent = t('sfxVolLabel');
+  document.getElementById('langSettingLabel').textContent = t('langLabel');
+  document.getElementById('fsSettingLabel').textContent = t('fullscreenLabel');
+  document.getElementById('lbTitleText').textContent = t('leaderboardTitle');
+  document.getElementById('goTitle').textContent = t('gameOverTitle');
+  document.getElementById('goScoreLabel').textContent = t('yourScoreLabel');
+  document.getElementById('playAgainBtn').textContent = t('playAgainBtn');
+  document.getElementById('goLobbyBtn').textContent = t('lobbyBtn');
+  document.getElementById('rotateHint').textContent = t('rotateHint');
+
+  const freeGiftEl = document.getElementById('freeGiftLabel');
+  if (freeGiftEl) freeGiftEl.textContent = t('freeLabel');
+
+  const langBtn = document.getElementById('cycleLangSettingBtn');
+  if (langBtn) langBtn.textContent = getLangButtonLabel(profile.lang);
+
+  const micBtn = document.getElementById('toggleMicBtn');
+  const spkBtn = document.getElementById('toggleSpeakerBtn');
+  if (micBtn) micBtn.title = t('micTitle');
+  if (spkBtn) spkBtn.title = t('speakerTitle');
+
+  updateFsButtonsText();
+}
+
+function updateFsButtonsText() {
+  const active = typeof isFullscreenActive === 'function' && isFullscreenActive();
+  const fsSettingBtn = document.getElementById('fsSettingBtn');
+  if (fsSettingBtn) {
+    fsSettingBtn.textContent = active ? `✕ ${t('exitFullscreen')}` : `⛶ ${t('openFullscreen')}`;
+  }
+}
+
+function refreshLobbyUI() {
+  document.getElementById('lobbyAvatar').textContent = profile.avatar;
+  document.getElementById('lobbyLevel').textContent = profile.level;
+  document.getElementById('lobbyNameBtn').textContent = profile.name;
+  document.getElementById('lobbyCoins').textContent = profile.coins;
+
+  const gameCoinsEl = document.getElementById('gameCoinsVal');
+  if (gameCoinsEl) gameCoinsEl.textContent = profile.coins;
+
+  const needed = xpNeededForLevel(profile.level);
+  const pct = Math.max(4, Math.min(100, Math.round((profile.xp / needed) * 100)));
+  document.getElementById('lobbyXpFill').style.width = `${pct}%`;
+  document.getElementById('lobbyXpText').textContent = `${profile.xp} / ${needed} XP`;
+}
+
 function openModal(id) {
-  playTone(500, 'sine', 0.06, 0.05);
-  document.getElementById(id).classList.add('open');
+  if (typeof sfx !== 'undefined') sfx.playClick();
+  const el = document.getElementById(id);
+  if (el) el.classList.add('open');
 }
+
 function closeModal(id) {
-  playTone(360, 'sine', 0.05, 0.05);
-  document.getElementById(id).classList.remove('open');
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('open');
 }
-document.querySelectorAll('[data-close]').forEach(btn => {
-  btn.addEventListener('click', () => closeModal(btn.dataset.close));
+
+document.querySelectorAll('[data-close]').forEach((btn) => {
+  btn.addEventListener('click', () => closeModal(btn.getAttribute('data-close')));
+});
+
+document.querySelectorAll('.modal-backdrop').forEach((backdrop) => {
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) backdrop.classList.remove('open');
+  });
 });
 
 function renderShop() {
-  const t = I18N[state.lang];
   const grid = document.getElementById('skinsGrid');
   grid.innerHTML = '';
-  SKINS.forEach(skin => {
-    const owned = state.ownedSkins.includes(skin.id);
-    const selected = state.selectedSkin === skin.id;
-    const div = document.createElement('div');
-    div.className = 'skin-item' + (selected ? ' selected' : '');
-    div.innerHTML = `
-      <div class="skin-preview-dots">
-        <span class="skin-dot" style="background:${skin.colors[0]}"></span>
-        <span class="skin-dot" style="background:${skin.colors[1]}"></span>
-        <span class="skin-dot" style="background:${skin.colors[2]}"></span>
-      </div>
-      <div class="skin-name">${skin.name[state.lang]}</div>
-      <button class="skin-action-btn ${owned ? '' : 'buy'}">
-        ${selected ? t.selected : (owned ? t.select : `${skin.price} ${GOLD_COIN_SVG}`)}
-      </button>
-    `;
-    div.addEventListener('click', () => {
-      if (owned) {
-        state.selectedSkin = skin.id;
-        playTone(600, 'sine', 0.08, 0.06);
-      } else if (state.coins >= skin.price) {
-        state.coins -= skin.price;
-        state.ownedSkins.push(skin.id);
-        state.selectedSkin = skin.id;
-        playTone(750, 'triangle', 0.14, 0.08);
-      } else {
-        playTone(200, 'sawtooth', 0.12, 0.06);
-      }
-      saveState();
-      updateUI();
-      renderShop();
+
+  SKINS.forEach((skin) => {
+    const owned = profile.unlockedSkins.includes(skin.id);
+    const equipped = profile.selectedSkin === skin.id;
+
+    const card = document.createElement('div');
+    card.className = `skin-card ${equipped ? 'equipped' : ''}`;
+
+    const preview = document.createElement('div');
+    preview.className = 'skin-preview';
+    skin.colors.forEach((c) => {
+      const dot = document.createElement('div');
+      dot.className = 'skin-dot';
+      dot.style.background = c;
+      preview.appendChild(dot);
     });
-    grid.appendChild(div);
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'skin-name';
+    nameEl.textContent = skin.name;
+
+    const btn = document.createElement('button');
+    btn.className = `skin-btn ${equipped ? 'equipped' : owned ? 'equip' : 'buy'}`;
+    if (equipped) {
+      btn.textContent = t('equippedBtn');
+    } else if (owned) {
+      btn.textContent = t('equipBtn');
+    } else {
+      btn.textContent = `${skin.price} 🪙`;
+    }
+
+    btn.addEventListener('click', () => {
+      if (typeof sfx !== 'undefined') sfx.playClick();
+      if (owned) {
+        profile.selectedSkin = skin.id;
+        saveProfile();
+        renderShop();
+      } else if (profile.coins >= skin.price) {
+        profile.coins -= skin.price;
+        profile.unlockedSkins.push(skin.id);
+        profile.selectedSkin = skin.id;
+        saveProfile();
+        refreshLobbyUI();
+        renderShop();
+      } else {
+        alert(t('notEnoughCoins'));
+      }
+    });
+
+    card.appendChild(preview);
+    card.appendChild(nameEl);
+    card.appendChild(btn);
+    grid.appendChild(card);
   });
 }
 
@@ -460,152 +218,351 @@ document.getElementById('openShopBtn').addEventListener('click', () => {
   openModal('shopModal');
 });
 
-function openProfile() {
-  const t = I18N[state.lang];
-  document.getElementById('playerNameInput').value = state.name;
+function openProfileModal() {
+  document.getElementById('playerNameInput').value = profile.name;
   const picker = document.getElementById('avatarPicker');
   picker.innerHTML = '';
-  AVATARS.forEach(av => {
-    const el = document.createElement('div');
-    el.className = 'avatar-choice' + (state.avatar === av ? ' active' : '');
-    el.textContent = av;
-    el.addEventListener('click', () => {
-      state.avatar = av;
-      openProfile();
+  AVATARS.forEach((av) => {
+    const opt = document.createElement('button');
+    opt.type = 'button';
+    opt.className = `avatar-opt ${av === profile.avatar ? 'selected' : ''}`;
+    opt.textContent = av;
+    opt.addEventListener('click', () => {
+      picker.querySelectorAll('.avatar-opt').forEach((x) => x.classList.remove('selected'));
+      opt.classList.add('selected');
+      opt.dataset.chosen = av;
     });
-    picker.appendChild(el);
+    picker.appendChild(opt);
   });
-
-  const modalBody = document.querySelector('#profileModal .modal-body');
-  let switcherBox = document.getElementById('profileSwitcherBox');
-  if (!switcherBox) {
-    switcherBox = document.createElement('div');
-    switcherBox.id = 'profileSwitcherBox';
-    switcherBox.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:4px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.15);';
-    modalBody.appendChild(switcherBox);
-  }
-
-  const allProfiles = getProfilesList();
-  switcherBox.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-      <span style="font-weight:800;font-size:13px;color:#ffd166;">${t.profilesListLabel} (${allProfiles.length})</span>
-      <button type="button" class="hud-mini-btn" id="createNewProfileBtn" style="background:#3a86ff;border-color:#caf0f8;">${t.newProfile}</button>
-    </div>
-    <div id="profilesListItems" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
-  `;
-
-  const listContainer = document.getElementById('profilesListItems');
-  allProfiles.forEach(prof => {
-    const btn = document.createElement('button');
-    const isCurrent = prof.id === activeProfileId;
-    btn.type = 'button';
-    btn.className = 'hud-mini-btn';
-    btn.style.cssText = isCurrent
-      ? 'background:#38b000;border-color:#d8f3dc;color:#fff;'
-      : 'background:rgba(15,23,42,0.85);border-color:rgba(255,255,255,0.25);color:#e2e8f0;';
-    btn.textContent = `${prof.avatar} ${prof.name} (Lv.${prof.level} | 🏆${prof.bestScore})`;
-    btn.addEventListener('click', () => {
-      switchProfile(prof.id);
-      openProfile();
-    });
-    listContainer.appendChild(btn);
-  });
-
-  document.getElementById('createNewProfileBtn').addEventListener('click', () => {
-    const typedName = document.getElementById('playerNameInput').value.trim();
-    const nextName = typedName && typedName !== state.name ? typedName : '';
-    createNewProfile(nextName);
-    openProfile();
-  });
-
   openModal('profileModal');
 }
-document.getElementById('openProfileBtn').addEventListener('click', openProfile);
-document.getElementById('lobbyNameBtn').addEventListener('click', openProfile);
+
+document.getElementById('openProfileBtn').addEventListener('click', openProfileModal);
+document.getElementById('lobbyNameBtn').addEventListener('click', openProfileModal);
+
 document.getElementById('saveProfileBtn').addEventListener('click', () => {
+  if (typeof sfx !== 'undefined') sfx.playClick();
   const val = document.getElementById('playerNameInput').value.trim();
-  if (val) state.name = val;
-  saveState();
-  updateUI();
+  if (val) profile.name = val.slice(0, 16);
+  const selectedOpt = document.querySelector('#avatarPicker .avatar-opt.selected');
+  if (selectedOpt) profile.avatar = selectedOpt.textContent;
+  saveProfile();
+  refreshLobbyUI();
   closeModal('profileModal');
 });
 
-document.getElementById('openSettingsBtn').addEventListener('click', () => openModal('settingsModal'));
-document.getElementById('shareGameBtn').addEventListener('click', () => shareGameInvite(null));
-
-document.getElementById('cycleLangSettingBtn').addEventListener('click', () => {
-  const idx = (LANGS.indexOf(state.lang) + 1) % LANGS.length;
-  state.lang = LANGS[idx];
-  saveState();
-  updateUI();
+document.getElementById('addFreeCoinsBtn').addEventListener('click', () => {
+  if (typeof sfx !== 'undefined') sfx.playCoin();
+  profile.coins += 50;
+  saveProfile();
+  refreshLobbyUI();
 });
 
-const musicSliderEl = document.getElementById('musicVolSlider');
-if (musicSliderEl) {
-  musicSliderEl.addEventListener('input', (e) => {
-    state.musicVol = Math.max(0, Math.min(100, Number(e.target.value) || 0));
-    const valEl = document.getElementById('musicVolVal');
-    if (valEl) valEl.textContent = `${state.musicVol}%`;
-    if (state.musicVol > 0) startBgMusic();
-    else stopBgMusic();
-    saveState();
-  });
-}
+document.querySelectorAll('.promo-card').forEach((card) => {
+  card.addEventListener('click', () => {
+    if (typeof sfx !== 'undefined') sfx.playClick();
+    const type = card.getAttribute('data-promo');
+    const titleEl = document.getElementById('infoModalTitle');
+    const bodyEl = document.getElementById('infoModalBody');
 
-const sfxSliderEl = document.getElementById('sfxVolSlider');
-if (sfxSliderEl) {
-  sfxSliderEl.addEventListener('input', (e) => {
-    state.sfxVol = Math.max(0, Math.min(100, Number(e.target.value) || 0));
-    const valEl = document.getElementById('sfxVolVal');
-    if (valEl) valEl.textContent = `${state.sfxVol}%`;
-    saveState();
+    if (type === 'chest') {
+      profile.coins += 100;
+      saveProfile();
+      refreshLobbyUI();
+      titleEl.textContent = t('freeGiftTitle');
+      bodyEl.innerHTML = `<div style="font-size:42px;">🎁</div><div style="font-weight:800;font-size:18px;color:#fbbf24;">+100 🪙</div><p>${t('freeGiftDesc')}</p>`;
+    } else if (type === 'starter') {
+      titleEl.textContent = t('starterPackTitle');
+      bodyEl.innerHTML = `<div style="font-size:40px;">🦸‍♂️</div><p>${t('starterPackDesc')}</p>`;
+    } else {
+      titleEl.textContent = t('piggyBankTitle');
+      bodyEl.innerHTML = `<div style="font-size:40px;">🐷</div><p>${t('piggyBankDesc')}</p>`;
+    }
+    openModal('infoModal');
   });
-  sfxSliderEl.addEventListener('change', () => playTone(560, 'sine', 0.06, 0.06));
-}
-
-document.getElementById('fullscreenLobbyBtn').addEventListener('click', toggleFullscreen);
-document.getElementById('fsSettingBtn').addEventListener('click', toggleFullscreen);
+});
 
 document.getElementById('openRecordsBtn').addEventListener('click', () => {
-  const t = I18N[state.lang];
-  document.getElementById('infoModalTitle').textContent = t.recordsTitle;
+  if (typeof sfx !== 'undefined') sfx.playClick();
+  document.getElementById('infoModalTitle').textContent = t('recordsTitle');
   document.getElementById('infoModalBody').innerHTML = `
-    <div style="font-size:42px;">🏆</div>
-    <div style="font-size:18px;font-weight:800;">${t.bestScore}: <span style="color:#ffd166;">${state.bestScore}</span></div>
-    <div style="font-size:15px;color:#cbd5e1;">Level ${state.level} (${state.name})</div>
+    <div style="font-size:40px;">🏆</div>
+    <div style="font-size:18px;font-weight:800;">${t('bestScoreLabel')}: <span style="color:#fde047;">${profile.bestScore}</span></div>
+    <div style="font-size:15px;opacity:0.9;">${t('levelLabel')}: ${profile.level} | ${t('coinsLabel')}: ${profile.coins}</div>
   `;
   openModal('infoModal');
 });
 
-document.querySelectorAll('.promo-card').forEach(card => {
-  card.addEventListener('click', () => {
-    const t = I18N[state.lang];
-    document.getElementById('infoModalTitle').textContent = t.promoTitle;
-    document.getElementById('infoModalBody').innerHTML = `
-      <div style="font-size:48px;">🎁</div>
-      <p style="font-size:15px;">${state.dailyClaimed ? t.claimed : t.claimBonus}</p>
-      <button class="play-main-btn ui-btn" id="claimPromoBtn" style="font-size:18px;padding:10px;" ${state.dailyClaimed ? 'disabled' : ''}>
-        ${state.dailyClaimed ? '✓' : t.claimBonus}
-      </button>
-    `;
-    openModal('infoModal');
-    const claimBtn = document.getElementById('claimPromoBtn');
-    if (claimBtn && !state.dailyClaimed) {
-      claimBtn.addEventListener('click', () => {
-        state.coins += 100;
-        state.dailyClaimed = true;
-        playTone(780, 'triangle', 0.15, 0.08);
-        saveState();
-        updateUI();
-        closeModal('infoModal');
-      });
-    }
-  });
+document.getElementById('shareGameBtn').addEventListener('click', () => {
+  if (typeof sfx !== 'undefined') sfx.playClick();
+  const shareUrl = location.href;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(shareUrl).catch(() => {});
+  }
+  document.getElementById('infoModalTitle').textContent = t('inviteTitle');
+  document.getElementById('infoModalBody').innerHTML = `
+    <div style="font-size:38px;">📤</div>
+    <p style="font-weight:700;">${t('inviteDesc')}</p>
+    <div style="background:rgba(15,23,42,0.55);padding:8px 10px;border-radius:10px;font-size:13px;word-break:break-all;">${shareUrl}</div>
+  `;
+  openModal('infoModal');
 });
 
-document.getElementById('addFreeCoinsBtn').addEventListener('click', () => {
-  state.coins += 50;
-  playTone(680, 'sine', 0.1, 0.07);
-  saveState();
-  updateUI();
+const musicSlider = document.getElementById('musicVolSlider');
+const sfxSlider = document.getElementById('sfxVolSlider');
+const musicValEl = document.getElementById('musicVolVal');
+const sfxValEl = document.getElementById('sfxVolVal');
+
+function syncAudioSlidersUI() {
+  if (typeof sfx === 'undefined') return;
+  musicSlider.value = String(sfx.musicVol);
+  sfxSlider.value = String(sfx.sfxVol);
+  musicValEl.textContent = `${sfx.musicVol}%`;
+  sfxValEl.textContent = `${sfx.sfxVol}%`;
+}
+
+musicSlider.addEventListener('input', () => {
+  const v = Number(musicSlider.value);
+  musicValEl.textContent = `${v}%`;
+  if (typeof sfx !== 'undefined') sfx.setMusicVol(v);
 });
+
+sfxSlider.addEventListener('input', () => {
+  const v = Number(sfxSlider.value);
+  sfxValEl.textContent = `${v}%`;
+  if (typeof sfx !== 'undefined') {
+    sfx.setSfxVol(v);
+    sfx.playClick();
+  }
+});
+
+document.getElementById('openSettingsBtn').addEventListener('click', () => {
+  syncAudioSlidersUI();
+  updateFsButtonsText();
+  openModal('settingsModal');
+});
+
+document.getElementById('cycleLangSettingBtn').addEventListener('click', () => {
+  if (typeof sfx !== 'undefined') sfx.playClick();
+  profile.lang = getNextLanguage(profile.lang);
+  saveProfile();
+  applyLocalization();
+});
+
+document.getElementById('fullscreenLobbyBtn').addEventListener('click', () => {
+  if (typeof sfx !== 'undefined') sfx.playClick();
+  if (typeof toggleAppFullscreen === 'function') toggleAppFullscreen();
+  setTimeout(updateFsButtonsText, 120);
+});
+
+document.getElementById('fsSettingBtn').addEventListener('click', () => {
+  if (typeof sfx !== 'undefined') sfx.playClick();
+  if (typeof toggleAppFullscreen === 'function') toggleAppFullscreen();
+  setTimeout(updateFsButtonsText, 120);
+});
+
+document.addEventListener('fullscreenchange', updateFsButtonsText);
+document.addEventListener('webkitfullscreenchange', updateFsButtonsText);
+
+let secLeft1 = 3 * 86400 + 11 * 3600;
+let secLeft2 = 23 * 3600 + 30 * 60;
+
+function formatTimer(totalSec) {
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  if (d > 0) return `${d}${t('dayShort')} ${h}${t('hourShort')}`;
+  return `${h}${t('hourShort')} ${m}${t('minShort')}`;
+}
+
+setInterval(() => {
+  if (secLeft1 > 60) secLeft1 -= 60;
+  if (secLeft2 > 60) secLeft2 -= 60;
+  document.getElementById('timer1').textContent = formatTimer(secLeft1);
+  document.getElementById('timer2').textContent = formatTimer(secLeft2);
+}, 60000);
+
+// ==========================================
+// INTERACTIVE LOBBY WORM CANVAS
+// ==========================================
+const lobbyCanvas = document.getElementById('lobbyCanvas');
+const lobbyScreen = document.getElementById('lobbyScreen');
+const lctx = lobbyCanvas.getContext('2d');
+
+const lobbyWorm = {
+  x: 0,
+  y: 0,
+  angle: -0.4,
+  targetAngle: -0.4,
+  speed: 135,
+  radius: 17,
+  segments: [],
+  dragging: false,
+  pointerId: null
+};
+
+function initLobbyWorm() {
+  lobbyWorm.x = lobbyCanvas.width * 0.5;
+  lobbyWorm.y = lobbyCanvas.height * 0.56;
+  lobbyWorm.segments = [];
+  for (let i = 0; i < 28; i++) {
+    lobbyWorm.segments.push({
+      x: lobbyWorm.x - Math.cos(lobbyWorm.angle) * i * 5.2,
+      y: lobbyWorm.y - Math.sin(lobbyWorm.angle) * i * 5.2
+    });
+  }
+}
+
+function resizeLobby() {
+  lobbyCanvas.width = window.innerWidth;
+  lobbyCanvas.height = window.innerHeight;
+  if (!lobbyWorm.segments.length) initLobbyWorm();
+}
+window.addEventListener('resize', resizeLobby);
+resizeLobby();
+
+function getLobbyWormSpawn(arenaHalfVal = 3000) {
+  const w = Math.max(1, lobbyCanvas.width || window.innerWidth);
+  const h = Math.max(1, lobbyCanvas.height || window.innerHeight);
+  const nx = (lobbyWorm.x / w - 0.5) * 2;
+  const ny = (lobbyWorm.y / h - 0.5) * 2;
+  const limit = Math.max(400, arenaHalfVal - 650);
+  return {
+    x: Math.max(-limit, Math.min(limit, nx * (limit * 0.75))),
+    y: Math.max(-limit, Math.min(limit, ny * (limit * 0.75))),
+    angle: lobbyWorm.angle
+  };
+}
+
+lobbyCanvas.addEventListener('pointerdown', (e) => {
+  if (typeof sfx !== 'undefined') {
+    sfx.ensure();
+    sfx.startMusic();
+  }
+  if (typeof requestAppFullscreen === 'function') requestAppFullscreen();
+
+  const dist = Math.hypot(e.clientX - lobbyWorm.x, e.clientY - lobbyWorm.y);
+  if (dist < 130) {
+    lobbyWorm.dragging = true;
+    lobbyWorm.pointerId = e.pointerId;
+    lobbyWorm.targetAngle = Math.atan2(e.clientY - lobbyWorm.y, e.clientX - lobbyWorm.x);
+  } else {
+    lobbyWorm.targetAngle = Math.atan2(e.clientY - lobbyWorm.y, e.clientX - lobbyWorm.x);
+  }
+});
+
+window.addEventListener('pointermove', (e) => {
+  if (lobbyWorm.dragging && e.pointerId === lobbyWorm.pointerId) {
+    lobbyWorm.targetAngle = Math.atan2(e.clientY - lobbyWorm.y, e.clientX - lobbyWorm.x);
+  }
+});
+
+window.addEventListener('pointerup', (e) => {
+  if (e.pointerId === lobbyWorm.pointerId) {
+    lobbyWorm.dragging = false;
+    lobbyWorm.pointerId = null;
+  }
+});
+
+let lastLobbyTime = performance.now();
+function lobbyLoop(now) {
+  const dt = Math.min(0.05, (now - lastLobbyTime) / 1000);
+  lastLobbyTime = now;
+
+  if (lobbyCanvas.style.display !== 'none') {
+    const w = lobbyCanvas.width;
+    const h = lobbyCanvas.height;
+
+    const bgGrad = lctx.createLinearGradient(0, 0, 0, h);
+    bgGrad.addColorStop(0, '#5ec8e5');
+    bgGrad.addColorStop(0.55, '#42b883');
+    bgGrad.addColorStop(1, '#2a9d8f');
+    lctx.fillStyle = bgGrad;
+    lctx.fillRect(0, 0, w, h);
+
+    lctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    lctx.lineWidth = 3;
+    lctx.beginPath();
+    lctx.arc(w * 0.5, h * 0.56, Math.min(w, h) * 0.25, 0, Math.PI * 2);
+    lctx.stroke();
+
+    const margin = 75;
+    if (!lobbyWorm.dragging) {
+      if (lobbyWorm.x < margin || lobbyWorm.x > w - margin || lobbyWorm.y < margin + 50 || lobbyWorm.y > h - margin - 60) {
+        lobbyWorm.targetAngle = Math.atan2(h * 0.54 - lobbyWorm.y, w * 0.5 - lobbyWorm.x);
+      } else if (Math.random() < 0.015) {
+        lobbyWorm.targetAngle += (Math.random() - 0.5) * 1.1;
+      }
+    }
+
+    let diff = lobbyWorm.targetAngle - lobbyWorm.angle;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    lobbyWorm.angle += diff * Math.min(1, dt * 6.5);
+
+    const spd = lobbyWorm.dragging ? lobbyWorm.speed * 1.45 : lobbyWorm.speed;
+    lobbyWorm.x += Math.cos(lobbyWorm.angle) * spd * dt;
+    lobbyWorm.y += Math.sin(lobbyWorm.angle) * spd * dt;
+
+    lobbyWorm.segments.unshift({ x: lobbyWorm.x, y: lobbyWorm.y });
+    const spacing = 5.2;
+    const kept = [lobbyWorm.segments[0]];
+    let acc = 0;
+    for (let i = 1; i < lobbyWorm.segments.length && kept.length < 28; i++) {
+      const prev = kept[kept.length - 1];
+      const cur = lobbyWorm.segments[i];
+      const d = Math.hypot(cur.x - prev.x, cur.y - prev.y);
+      acc += d;
+      if (acc >= spacing) {
+        kept.push({ x: cur.x, y: cur.y });
+        acc = 0;
+      }
+    }
+    lobbyWorm.segments = kept;
+
+    const skin = SKINS.find((s) => s.id === profile.selectedSkin) || SKINS[0];
+    const cols = skin.colors;
+
+    for (let i = lobbyWorm.segments.length - 1; i >= 1; i--) {
+      const s = lobbyWorm.segments[i];
+      const taper = i > 20 ? Math.max(0.35, 1 - ((i - 20) / 8) * 0.65) : 1;
+      const r = lobbyWorm.radius * taper;
+      lctx.fillStyle = cols[Math.floor(i / 4) % cols.length];
+      lctx.beginPath();
+      lctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+      lctx.fill();
+      lctx.strokeStyle = 'rgba(15, 23, 42, 0.22)';
+      lctx.lineWidth = 1.2;
+      lctx.stroke();
+    }
+
+    lctx.save();
+    lctx.translate(lobbyWorm.x, lobbyWorm.y);
+    lctx.rotate(lobbyWorm.angle);
+    lctx.fillStyle = cols[0];
+    lctx.beginPath();
+    lctx.arc(0, 0, lobbyWorm.radius * 1.06, 0, Math.PI * 2);
+    lctx.fill();
+    lctx.strokeStyle = 'rgba(15, 23, 42, 0.28)';
+    lctx.lineWidth = 1.5;
+    lctx.stroke();
+
+    for (const side of [-1, 1]) {
+      lctx.fillStyle = '#fff';
+      lctx.beginPath();
+      lctx.arc(5.5, side * 7.5, 5.5, 0, Math.PI * 2);
+      lctx.fill();
+      lctx.fillStyle = '#0f172a';
+      lctx.beginPath();
+      lctx.arc(7.2, side * 7.5, 2.8, 0, Math.PI * 2);
+      lctx.fill();
+    }
+    lctx.restore();
+  }
+
+  requestAnimationFrame(lobbyLoop);
+}
+
+applyLocalization();
+refreshLobbyUI();
+requestAnimationFrame(lobbyLoop);

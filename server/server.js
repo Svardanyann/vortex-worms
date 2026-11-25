@@ -8,9 +8,9 @@ const ARENA_HALF = 3000;
 const TICK_RATE = 20;
 const GRID_SIZE = 6; // 6x6 = 36 zones for balanced random fruit distribution
 const ZONE_SPAN = (ARENA_HALF * 2) / GRID_SIZE;
-const MIN_FRUITS_PER_ZONE = 45;
-const MAX_FRUITS_PER_ZONE = 75;
-const POWERUP_COUNT = 52;
+const MIN_FRUITS_PER_ZONE = 16;
+const MAX_FRUITS_PER_ZONE = 28;
+const POWERUP_COUNT = 38;
 const COIN_COUNT = 8;
 const BOT_COUNT = 5;
 
@@ -660,14 +660,16 @@ function killRoomPlayer(room, victim, killer) {
   if (!victim || !victim.alive) return;
   victim.alive = false;
 
-  const watermelonIdx = FRUITS.length - 1;
-  for (let i = 0; i < victim.segments.length; i += 3) {
+  // Drop a colorful trail of high-value fruits instead of identical watermelons
+  const highTierStart = Math.max(8, FRUITS.length - 12);
+  for (let i = 0; i < victim.segments.length; i += 4) {
     const seg = victim.segments[i];
-    if (room.foods.size < 5200) {
+    if (room.foods.size < 2600) {
+      const dropIdx = highTierStart + (i % (FRUITS.length - highTierStart));
       spawnRoomFood(room, null, true, {
-        x: Math.max(-ARENA_HALF + 80, Math.min(ARENA_HALF - 80, Math.round(seg.x + (Math.random() - 0.5) * 18))),
-        y: Math.max(-ARENA_HALF + 80, Math.min(ARENA_HALF - 80, Math.round(seg.y + (Math.random() - 0.5) * 18)))
-      }, watermelonIdx);
+        x: Math.max(-ARENA_HALF + 80, Math.min(ARENA_HALF - 80, Math.round(seg.x + (Math.random() - 0.5) * 14))),
+        y: Math.max(-ARENA_HALF + 80, Math.min(ARENA_HALF - 80, Math.round(seg.y + (Math.random() - 0.5) * 14)))
+      }, dropIdx);
     }
   }
 
@@ -775,7 +777,6 @@ function stepRoomSimulation(room, dt) {
       }
     }
 
-    // Rare coins pickup
     if (!p.isBot) {
       for (let i = room.coins.length - 1; i >= 0; i--) {
         const c = room.coins[i];
@@ -792,7 +793,6 @@ function stepRoomSimulation(room, dt) {
       }
     }
 
-    // Bots still eat on server
     if (p.isBot) {
       const eatR = r + 14;
       for (const f of room.foods.values()) {
