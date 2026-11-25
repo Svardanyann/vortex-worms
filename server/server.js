@@ -4,10 +4,10 @@ const path = require('path');
 const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 3000;
-const ARENA_HALF = 4500;
-const TICK_RATE = 15;
-const FOOD_COUNT = 4000;
-const POWERUP_COUNT = 45;
+const ARENA_HALF = 3000;
+const TICK_RATE = 20;
+const FOOD_COUNT = 2200;
+const POWERUP_COUNT = 35;
 const BOT_COUNT = 5;
 
 const POWERUP_TYPES = ['magnet', 'zoom', 'freeBoost'];

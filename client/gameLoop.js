@@ -662,9 +662,10 @@ function traceSmoothSpline(ctx, segs, startIdx, endIdx) {
     ctx.lineTo(segs[endIdx].x, segs[endIdx].y);
     return;
   }
-  for (let i = startIdx; i < endIdx; i++) {
+  const step = (endIdx - startIdx) > 30 ? 3 : 1;
+  for (let i = startIdx; i < endIdx; i += step) {
     const curr = segs[i];
-    const next = segs[i + 1];
+    const next = segs[Math.min(endIdx, i + step)];
     const midX = (curr.x + next.x) * 0.5;
     const midY = (curr.y + next.y) * 0.5;
     ctx.quadraticCurveTo(curr.x, curr.y, midX, midY);
@@ -672,7 +673,6 @@ function traceSmoothSpline(ctx, segs, startIdx, endIdx) {
   ctx.lineTo(segs[endIdx].x, segs[endIdx].y);
 }
 
-// Continuous 3D tubular worm body renderer with uniform stripes & neat hemispherical tail cap
 function renderContinuousWormBody(ctx, segs, r, colors, isBoostingActive = false) {
   const len = segs.length;
   if (len === 0) return;
@@ -682,40 +682,27 @@ function renderContinuousWormBody(ctx, segs, r, colors, isBoostingActive = false
 
   // 1. Boost outer golden aura
   if (isBoostingActive) {
-    const pulse = 0.88 + 0.12 * Math.sin(performance.now() * 0.02);
     ctx.lineCap = 'round';
     ctx.strokeStyle = 'rgba(250, 204, 21, 0.28)';
-    ctx.lineWidth = (r + 5 * pulse) * 2;
+    ctx.lineWidth = (r + 4.5) * 2;
     traceSmoothSpline(ctx, segs, 0, len - 1);
     ctx.stroke();
   }
 
-  // 2. Soft ground drop shadow for 3D depth
-  ctx.save();
-  ctx.translate(0, r * 0.24);
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.24)';
-  ctx.lineWidth = r * 2.02;
-  traceSmoothSpline(ctx, segs, 0, len - 1);
-  ctx.stroke();
-  ctx.restore();
-
-  // 3. Subtle dark outline around entire continuous tube
+  // 2. Dark outline + base fill
   ctx.lineCap = 'round';
   ctx.strokeStyle = 'rgba(8, 16, 24, 0.45)';
   ctx.lineWidth = r * 2 + 2.4;
   traceSmoothSpline(ctx, segs, 0, len - 1);
   ctx.stroke();
 
-  // 4. Base color fill across entire tube so seams never show
-  ctx.lineCap = 'round';
   ctx.strokeStyle = colors[0];
   ctx.lineWidth = r * 2;
   traceSmoothSpline(ctx, segs, 0, len - 1);
   ctx.stroke();
 
-  // 5. Uniform alternating color bands with 'butt' caps so tail band never elongates or bulges
-  const bandStep = 3;
+  // 3. Alternating color bands (wider step = 3x higher FPS)
+  const bandStep = 6;
   ctx.lineCap = 'butt';
   for (let end = len - 1; end > 0; end -= bandStep) {
     const start = Math.max(0, end - bandStep);
@@ -726,7 +713,7 @@ function renderContinuousWormBody(ctx, segs, r, colors, isBoostingActive = false
     ctx.stroke();
   }
 
-  // 6. Neat hemispherical tail cap matching the exact color of the final tail band
+  // 4. Tail cap
   if (len >= 2) {
     const tail = segs[len - 1];
     const prevTail = segs[len - 2];
@@ -740,16 +727,6 @@ function renderContinuousWormBody(ctx, segs, r, colors, isBoostingActive = false
     ctx.closePath();
     ctx.fill();
   }
-
-  // 7. Continuous glossy top-3D highlight along the spine
-  ctx.save();
-  ctx.translate(-r * 0.12, -r * 0.24);
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
-  ctx.lineWidth = r * 0.68;
-  traceSmoothSpline(ctx, segs, 0, len - 1);
-  ctx.stroke();
-  ctx.restore();
 
   ctx.restore();
 }
@@ -878,9 +855,20 @@ function drawWorm(worm) {
 }
 
 function drawMinimap() {
-  let x0 = 12;
-  let y0 = 52;
-  const size = 64;
+  const x0 = 14;
+  const y0 = 56;
+  const size = 68;
+  const cx = x0 + size / 2;
+  const cy = y0 + size / 2;
+
+  gCtx.save();
+  gCtx.fillStyle = 'rgba(10, 20, 35, 0.52)';
+  gCtx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+  gCtx.lineWidth = 1.2;
+  gCtx.beginPath();
+  gCtx.roundRect(x0, y0, size, size, 8);
+  gCtx.fill();
+  gCtx.stroke();
 
   const coinsEl = document.getElementById('gameCoinsVal');
   const coinsPill = coinsEl ? coinsEl.parentElement : null;
